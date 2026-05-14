@@ -63,7 +63,10 @@ cd ~/Downloads/tiktok-crm-lead-manager
 - เพิ่ม router สำหรับ `liff.state` เพื่อให้ลิงก์ `https://liff.line.me/<LIFF_ID>/owner` ไป `owner.html` ได้เมื่อ LIFF endpoint เป็น GitHub Pages root
 - ทดสอบ Apps Script backend ด้วย `curl -L -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"ping"}' ...` แล้วได้ JSON ok
 - Apps Script deploy ล่าสุด `@16`
-- ยังไม่ได้ push ขึ้น GitHub เพราะ `gh auth status` แจ้ง token ของ account `pariwat-aruno` หมดอายุ ต้อง `gh auth login` ใหม่ก่อน
+- GitHub repo: https://github.com/pariwat-aruno/tiktok-crm-lead-manager
+- GitHub Pages: https://pariwat-aruno.github.io/tiktok-crm-lead-manager/ (`gh-pages` branch root)
+- Pages status: built, HTTP 200
+- LINE LIFF Endpoint URL ที่ต้องตั้ง: `https://pariwat-aruno.github.io/tiktok-crm-lead-manager/`
 - `Setup.gs` — เพิ่ม `clearWorkerUrl()` และ `setupAppsScriptOnlyMode()`
 
 URL ที่ทดสอบแล้วโหลด HTML ได้:
