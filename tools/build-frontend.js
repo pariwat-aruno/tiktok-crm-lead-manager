@@ -33,33 +33,37 @@ function jsonScriptValue(value) {
 function appScript(page) {
   const frontendBase =
     '<script>window.__CRM_FRONTEND_BASE = window.location.href.replace(/[^\\/]*$/, "");</script>\n';
+  const appObject = [
+    'const APP = {',
+    `    brand: ${jsonScriptValue(BRAND)},`,
+    `    liffId: ${jsonScriptValue(LIFF_ID)},`,
+    `    apiUrl: ${jsonScriptValue(API_URL)},`,
+    '    frontendBase: window.__CRM_FRONTEND_BASE || "",',
+    `    page: ${jsonScriptValue(page)},`,
+    '    params: Object.fromEntries(new URLSearchParams(window.location.search).entries()),',
+    '  };',
+  ].join('\n');
+  // ใช้ replacement function — กัน `$$`/`$&` ใน source (เช่น U.$$) ถูกตีความเป็น special pattern
   return frontendBase + shared.replace(
     /const APP = \{[\s\S]*?\n  \};/,
-    [
-      'const APP = {',
-      `    brand: ${jsonScriptValue(BRAND)},`,
-      `    liffId: ${jsonScriptValue(LIFF_ID)},`,
-      `    apiUrl: ${jsonScriptValue(API_URL)},`,
-      '    frontendBase: window.__CRM_FRONTEND_BASE || "",',
-      `    page: ${jsonScriptValue(page)},`,
-      '    params: Object.fromEntries(new URLSearchParams(window.location.search).entries()),',
-      '  };',
-    ].join('\n')
+    () => appObject
   );
 }
 
 function transform(page, source) {
   let html = source;
+  // ใช้ replacement function ทุกที่ที่ replacement อาจมี `$` (เช่น U.$$, regex ใน JS)
+  // เพื่อกัน String.replace ตีความ `$$`/`$&`/`$1` เป็น special pattern
   html = html.replace(/<base target="_top">/g, '');
-  html = html.replace(/<\?= brand \?>/g, BRAND);
-  html = html.replace(/<\?!= include\('_styles'\) \?>/g, styles);
-  html = html.replace(/<\?!= include\('_app'\) \?>/g, appScript(page));
+  html = html.replace(/<\?= brand \?>/g, () => BRAND);
+  html = html.replace(/<\?!= include\('_styles'\) \?>/g, () => styles);
+  html = html.replace(/<\?!= include\('_app'\) \?>/g, () => appScript(page));
   html = html.replace(/<\?= apiUrl \?>\?page=([a-z]+)/g, (_, p) => `${p}.html`);
-  html = html.replace(/<\?= apiUrl \?>/g, API_URL);
-  html = html.replace(/<\?= color \?>/g, COLOR);
+  html = html.replace(/<\?= apiUrl \?>/g, () => API_URL);
+  html = html.replace(/<\?= color \?>/g, () => COLOR);
   html = html.replace(/<\?[\s\S]*?\?>/g, '');
   if (page === 'index') {
-    html = html.replace('<body>', '<body>\n' + indexRouterScript());
+    html = html.replace('<body>', () => '<body>\n' + indexRouterScript());
   }
   return html;
 }
