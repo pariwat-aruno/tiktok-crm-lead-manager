@@ -55,6 +55,11 @@ function transform(page, source) {
   // ใช้ replacement function ทุกที่ที่ replacement อาจมี `$` (เช่น U.$$, regex ใน JS)
   // เพื่อกัน String.replace ตีความ `$$`/`$&`/`$1` เป็น special pattern
   html = html.replace(/<base target="_top">/g, '');
+  // เพิ่ม viewport meta — Apps Script ใส่ผ่าน addMetaTag() แต่ static file ต้องมีใน HTML เอง
+  html = html.replace(
+    /<meta charset="UTF-8">/i,
+    () => '<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">'
+  );
   html = html.replace(/<\?= brand \?>/g, () => BRAND);
   html = html.replace(/<\?!= include\('_styles'\) \?>/g, () => styles);
   html = html.replace(/<\?!= include\('_app'\) \?>/g, () => appScript(page));
