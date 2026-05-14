@@ -69,13 +69,14 @@ function transform(page, source) {
 }
 
 function indexRouterScript() {
-  return `<script>
+  return `<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
 (function () {
   var params = new URLSearchParams(window.location.search);
-  var state = params.get('liff.state');
-  if (!state) return;
-  state = String(state).replace(/^\\/+/, '');
-  var path = state.split('?')[0].replace(/\\.html$/i, '').toLowerCase();
+  var rawState = params.get('liff.state');
+  if (!rawState) return; // ไม่มี liff.state → แสดง landing page ปกติ
+
+  var LIFF_ID = ${JSON.stringify(LIFF_ID)};
   var pageMap = {
     id: 'myid', myid: 'myid',
     reg: 'register', register: 'register',
@@ -83,11 +84,26 @@ function indexRouterScript() {
     staff: 'staff', lead: 'lead', manager: 'manager', owner: 'owner',
     leave: 'leave', genmenu: 'genmenu', menu: 'genmenu'
   };
-  var target = pageMap[path];
-  if (!target) return;
-  var base = window.location.href.replace(/[^\\/]*$/, '').split('?')[0];
-  var q = state.indexOf('?') >= 0 ? state.slice(state.indexOf('?') + 1) : '';
-  window.location.replace(base + target + '.html' + (q ? '?' + q : ''));
+
+  function routeNow() {
+    var state = String(rawState).replace(/^\\/+/, '');
+    var path = state.split('?')[0].replace(/\\.html$/i, '').toLowerCase();
+    var target = pageMap[path];
+    if (!target) return;
+    var base = window.location.href.replace(/[^\\/]*$/, '').split('?')[0];
+    // ส่ง query ทั้งหมดต่อ (ยกเว้น liff.state) — รวม login params ที่ LIFF ใส่มา
+    var fwd = new URLSearchParams(window.location.search);
+    fwd.delete('liff.state');
+    var inner = state.indexOf('?') >= 0 ? state.slice(state.indexOf('?') + 1) : '';
+    if (inner) new URLSearchParams(inner).forEach(function (v, k) { fwd.set(k, v); });
+    var qs = fwd.toString();
+    window.location.replace(base + target + '.html' + (qs ? '?' + qs : ''));
+  }
+
+  // liff.init() ก่อน เพื่อให้ LIFF SDK resolve login state + เก็บไว้
+  // แล้วค่อย route — กัน loop (app.html จะเห็น logged in แล้ว ไม่ liff.login ซ้ำ)
+  if (typeof liff === 'undefined') { routeNow(); return; }
+  liff.init({ liffId: LIFF_ID }).then(routeNow).catch(routeNow);
 }());
 </script>`;
 }
