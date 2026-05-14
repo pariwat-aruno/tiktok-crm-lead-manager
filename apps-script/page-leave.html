@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="th"><head><base target="_top"><meta charset="UTF-8">
+<title>ลางาน — <?= brand ?></title>
+<?!= include('_styles') ?>
+</head><body>
+<div id="app"><div class="app"><div class="header"><div class="brand"><?= brand ?></div><h1>เข้าระบบ...</h1></div><div class="content"><div class="loading">⏳</div></div></div></div>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<?!= include('_app') ?>
+<script>
+(async function () {
+  const r = await bootApp();
+  if (!r) return;
+  await render();
+})();
+
+async function render() {
+  let myLeaves = { leaves: [] };
+  try { myLeaves = await apiCall('getMyLeaves'); } catch (e) {}
+  const list = myLeaves.leaves || [];
+  const todayIso = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10); // BKK
+
+  U.$('#app').innerHTML = '<div class="app">' +
+    '<div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>ขอลางาน</h1></div>' +
+    '<div class="content">' +
+    '<a class="back-link" href="' + pageUrl('app') + '">← กลับ</a>' +
+    '<div class="card"><h3 style="font-size:13px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">ส่งคำขอลา</h3>' +
+      '<label style="font-size:12px;font-weight:600;">ประเภท</label>' +
+      '<select id="type" class="input" style="margin:4px 0 10px;">' +
+        '<option value="sick">ลาป่วย</option>' +
+        '<option value="personal">ลากิจ</option>' +
+        '<option value="vacation">ลาพักร้อน</option>' +
+        '<option value="other">อื่นๆ</option>' +
+      '</select>' +
+      '<label style="font-size:12px;font-weight:600;">วันเริ่ม</label>' +
+      '<input type="date" id="start" class="input" min="' + todayIso + '" style="margin:4px 0 10px;">' +
+      '<label style="font-size:12px;font-weight:600;">วันสิ้นสุด</label>' +
+      '<input type="date" id="end" class="input" min="' + todayIso + '" style="margin:4px 0 10px;">' +
+      '<label style="font-size:12px;font-weight:600;">เหตุผล</label>' +
+      '<textarea id="reason" class="textarea" placeholder="รายละเอียดเหตุผลการลา" style="margin-top:4px;"></textarea>' +
+      '<button class="btn btn-primary btn-block" id="submitBtn" style="margin-top:14px;">ส่งคำขอ</button>' +
+      '<div id="msg" style="margin-top:10px;"></div>' +
+    '</div>' +
+    '<div class="card"><h3 style="font-size:13px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">ประวัติ (' + list.length + ')</h3>' +
+    (list.length === 0 ? '<p style="color:var(--muted);text-align:center;padding:20px 0;">ยังไม่มีประวัติลา</p>' :
+      list.map(function (l) {
+        const cls = l.status === 'approved' ? 'success' : l.status === 'rejected' ? 'overdue' : '';
+        return '<div style="padding:10px 0;border-bottom:1px solid var(--border);">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+            '<div><div style="font-weight:600;">' + U.esc(l.start_date) + ' - ' + U.esc(l.end_date) + '</div>' +
+              '<div style="font-size:11px;color:var(--muted);">' + U.esc(l.leave_type) + ' · ' + U.esc(l.reason || '') + '</div></div>' +
+            '<span class="badge ' + (cls ? 'badge-' + cls : '') + '">' + l.status + '</span>' +
+          '</div>' +
+          (l.status === 'pending' || (l.status === 'approved' && new Date(l.start_date) > new Date())
+            ? '<button class="btn btn-outline btn-sm cancel-btn" data-id="' + U.esc(l.leave_id) + '" style="margin-top:6px;">ยกเลิก</button>' : '') +
+        '</div>';
+      }).join('')) +
+    '</div>' +
+    '</div></div>';
+
+  U.$('#submitBtn').addEventListener('click', submit);
+  U.$$('.cancel-btn').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      const ok = await U.confirm('ยกเลิกคำขอลา?', { danger: true, okText: 'ยกเลิกคำขอ' });
+      if (!ok) return;
+      try {
+        await apiCall('cancelLeave', { leaveId: b.dataset.id });
+        U.toast('ยกเลิกแล้ว'); render();
+      } catch (e) { U.toast(e.message, true); }
+    });
+  });
+}
+
+async function submit() {
+  const args = {
+    startDate: U.$('#start').value,
+    endDate: U.$('#end').value,
+    leaveType: U.$('#type').value,
+    reason: U.$('#reason').value.trim(),
+  };
+  if (!args.startDate || !args.endDate) return U.toast('เลือกวัน', true);
+  try {
+    await apiCall('requestLeave', args);
+    U.$('#msg').innerHTML = '<div class="alert alert-success">✅ ส่งคำขอแล้ว</div>';
+    setTimeout(render, 1500);
+  } catch (err) {
+    U.$('#msg').innerHTML = '<div class="alert alert-error">' + U.esc(err.message) + '</div>';
+  }
+}
+</script>
+</body></html>

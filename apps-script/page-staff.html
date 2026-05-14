@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="th"><head><base target="_top"><meta charset="UTF-8">
+<title>คิว — <?= brand ?></title>
+<?!= include('_styles') ?>
+<style>
+  .lead-row { display:flex; gap:12px; padding:12px; border-bottom:1px solid var(--border); cursor:pointer; }
+  .lead-row:active { background: var(--primary-light); }
+  .lead-row.overdue { background: #fef2f2; border-left: 3px solid var(--danger); }
+  .phone-display { font-size: 22px; font-weight: 700; padding: 14px; background: #fef9e7; border-radius: 8px; text-align: center; letter-spacing: 1px; }
+  .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .result-btn { padding: 14px 8px; border: 1.5px solid var(--border); background: #fff; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .result-btn.bought { background: #dcfce7; color: #15803d; }
+  .result-btn.not_bought { background: #fef3c7; color: #92400e; }
+  .result-btn.blacklist_req { background: #fee2e2; color: var(--danger); grid-column: span 2; }
+</style>
+</head><body>
+<div id="app"><div class="app"><div class="header"><div class="brand"><?= brand ?></div><h1>เข้าระบบ...</h1></div><div class="content"><div class="loading">⏳</div></div></div></div>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<?!= include('_app') ?>
+<script>
+const STATE = { current: null };
+
+(async function () {
+  const r = await bootApp();
+  if (!r) return;
+  await loadQueue();
+})();
+
+async function loadQueue() {
+  U.$('#app').innerHTML = '<div class="app"><div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>คิวลูกค้า</h1></div><div class="content"><div class="loading">⏳</div></div></div>';
+  try {
+    const r = await apiCall('getMyQueue');
+    renderQueue(r);
+  } catch (err) { U.showError(err.message); }
+}
+
+function renderQueue(r) {
+  const queue = r.queue || [];
+  let html = '<div class="app">' +
+    '<div class="header"><div class="brand">' + U.esc(APP.brand) + '</div>' +
+    '<h1>สวัสดี คุณ' + U.esc(r.displayName || '') + '</h1>' +
+    '<div class="sub">มี ' + queue.length + ' รายในคิว · <a href="' + pageUrl('leave') + '" style="color:#fff;text-decoration:underline;">ขอลา</a></div></div>' +
+    '<div class="content">';
+
+  if (queue.length === 0) {
+    html += '<div class="card empty">🎉 ไม่มีลูกค้ารอโทร</div>';
+  } else {
+    html += '<div class="card" style="padding:0;">';
+    const now = Date.now();
+    queue.forEach(function (l) {
+      const overdue = l.dueDate && new Date(l.dueDate).getTime() < now;
+      html += '<div class="lead-row ' + (overdue ? 'overdue' : '') + '" data-id="' + U.esc(l.leadId) + '">' +
+        '<div style="flex:1;">' +
+          '<div style="font-weight:600;">' + U.esc(l.name || '(ไม่มีชื่อ)') + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);">📱 ' + U.esc(l.phone || '-') + (l.primarySku ? ' · ' + U.esc(l.primarySku) : '') + '</div>' +
+          (overdue ? '<span class="badge badge-overdue">⏰ เลย SLA</span>' : '') +
+          (l.status === 'postponed' ? '<span class="badge">เลื่อน</span>' : '') +
+          (l.status === 'no_answer' ? '<span class="badge">ไม่รับ</span>' : '') +
+        '</div>' +
+        '<div style="color:var(--muted);align-self:center;">›</div></div>';
+    });
+    html += '</div>';
+  }
+  html += '</div></div>';
+  U.$('#app').innerHTML = html;
+  U.$$('.lead-row').forEach(function (row) {
+    row.addEventListener('click', function () { openLead(row.dataset.id); });
+  });
+}
+
+async function openLead(leadId) {
+  U.$('#app').innerHTML = '<div class="app"><div class="content"><div class="loading">⏳</div></div></div>';
+  try {
+    const r = await apiCall('getLeadDetail', { leadId: leadId });
+    STATE.current = r;
+    renderDetail();
+  } catch (err) { U.showError(err.message); }
+}
+
+function renderDetail() {
+  const d = STATE.current;
+  const lead = d.lead || {}, c = d.customer || {}, orders = d.orders || [], script = d.script || {};
+  let html = '<div class="app">' +
+    '<div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>รายละเอียดลูกค้า</h1></div>' +
+    '<div class="content">' +
+    '<a class="back-link" id="backBtn">← กลับคิว</a>' +
+    '<div class="card">' +
+      '<h2 style="font-size:18px;">' + U.esc(c.name || '(ไม่มีชื่อ)') + '</h2>' +
+      '<div style="font-size:12px;color:var(--muted);">' + U.esc(c.stage || '') + '</div>' +
+      '<div class="phone-display" style="margin-top:10px;">' + U.esc(c.phone || '-') + '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:8px;">' +
+        '<a href="tel:' + U.esc(c.phone || '') + '" class="btn btn-primary" id="callBtn" style="flex:1;text-align:center;text-decoration:none;">📞 โทร</a>' +
+        '<button class="btn btn-outline" id="copyBtn" style="flex:1;">📋 คัดลอกเบอร์</button>' +
+      '</div>' +
+      (orders.length > 0 ? '<div style="margin-top:14px;"><div style="font-size:12px;color:var(--muted);">ออเดอร์ (' + orders.length + ')</div>' +
+        orders.map(function (o) {
+          return '<div class="row"><span class="k">' + U.esc(o.sku || '') + ' ' + U.esc(o.productName || '') + '</span><span>฿' + Number(o.amount || 0).toLocaleString() + '</span></div>';
+        }).join('') + '</div>' : '') +
+      (script.text ? '<div style="margin-top:14px;"><div style="font-size:12px;color:var(--muted);">สคริปต์</div><div style="background:var(--primary-light);padding:10px;border-radius:6px;font-size:14px;white-space:pre-wrap;margin-top:4px;">' + U.esc(script.text) + '</div></div>' : '') +
+      '<div class="result-grid">' +
+        '<button class="result-btn bought" data-r="bought">✅ ซื้อ</button>' +
+        '<button class="result-btn not_bought" data-r="not_bought">❌ ไม่ซื้อ</button>' +
+        '<button class="result-btn" data-r="no_answer">📵 ไม่รับ</button>' +
+        '<button class="result-btn" data-r="postponed">⏰ เลื่อน</button>' +
+        '<button class="result-btn" data-r="rejected">🚪 ปฏิเสธ</button>' +
+        '<button class="result-btn blacklist_req" data-r="blacklist_req">🚫 ขอ Blacklist</button>' +
+      '</div>' +
+    '</div></div></div>';
+  U.$('#app').innerHTML = html;
+  U.$('#backBtn').addEventListener('click', loadQueue);
+  U.$('#callBtn').addEventListener('click', function () { apiCall('logCopyPhone', { leadId: lead.leadId }).catch(function(){}); });
+  U.$('#copyBtn').addEventListener('click', async function () {
+    await U.copy(c.phone || '');
+    apiCall('logCopyPhone', { leadId: lead.leadId }).catch(function(){});
+  });
+  U.$$('.result-btn').forEach(function (b) {
+    b.addEventListener('click', function () { handleResult(b.dataset.r); });
+  });
+}
+
+async function handleResult(result) {
+  const leadId = STATE.current.lead.leadId;
+  let args = { leadId: leadId, result: result };
+
+  if (result === 'not_bought') {
+    const reason = await U.select('เหตุผลที่ไม่ซื้อ?', {
+      title: 'เหตุผลที่ไม่ซื้อ',
+      options: [
+        { value: 'price_too_high', label: 'ราคาแพง' },
+        { value: 'still_have_stock', label: 'ยังมีของอยู่' },
+        { value: 'changed_mind', label: 'เปลี่ยนใจ' },
+        { value: 'unsatisfied', label: 'ไม่พอใจสินค้า' },
+        { value: 'other_brand', label: 'ใช้แบรนด์อื่น' },
+        { value: 'other', label: 'อื่นๆ' },
+      ],
+    });
+    if (!reason) return;
+    args.rejectReason = reason;
+  }
+  if (result === 'postponed') {
+    const d = await U.select('เลื่อนกี่วัน?', {
+      title: 'เลื่อนนัด',
+      options: [
+        { value: '1', label: '1 วัน' },
+        { value: '3', label: '3 วัน' },
+        { value: '7', label: '1 สัปดาห์' },
+        { value: '14', label: '2 สัปดาห์' },
+        { value: '30', label: '1 เดือน' },
+      ],
+    });
+    if (!d) return;
+    args.postponeDays = Number(d);
+  }
+  if (result === 'blacklist_req') {
+    const note = await U.prompt('ระบุเหตุผลที่ต้องการ blacklist ลูกค้าคนนี้', {
+      title: 'ขอ Blacklist', multiline: true, minLen: 5,
+      placeholder: 'เช่น ลูกค้าด่าทุกครั้งที่โทร / ไม่จ่ายเงิน / ปลอมตัว',
+    });
+    if (!note) return;
+    args.note = note;
+  }
+  if (result === 'bought' || result === 'rejected') {
+    const ok = await U.confirm(result === 'bought' ? 'ยืนยันลูกค้าซื้อสินค้า?' : 'ยืนยันลูกค้าปฏิเสธ?');
+    if (!ok) return;
+  }
+  try {
+    await apiCall('recordCallResult', args);
+    U.toast('บันทึกแล้ว');
+    await loadQueue();
+  } catch (err) { U.toast(err.message, true); }
+}
+</script>
+</body></html>

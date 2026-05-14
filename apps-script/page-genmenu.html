@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="th"><head><base target="_top"><meta charset="UTF-8">
+<title>สร้าง Rich Menu — <?= brand ?></title>
+<?!= include('_styles') ?>
+<style>
+  .preview-wrap { background: #f3f4f6; padding: 10px; border-radius: 8px; }
+  .preview-wrap canvas { width: 100%; height: auto; display: block; border-radius: 4px; }
+  .tile-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 10px; }
+  .tile { background: #fff; padding: 8px; border-radius: 6px; border: 1px solid var(--border); }
+  .tile label { font-size: 11px; color: var(--muted); display: block; }
+  .tile input { width: 100%; border: none; border-bottom: 1px solid var(--border); padding: 4px 0; font-size: 13px; font-family: inherit; }
+  .tile input[type=color] { height: 28px; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
+</style>
+</head><body>
+<div id="app"><div class="app"><div class="header"><div class="brand"><?= brand ?></div><h1>เข้าระบบ...</h1></div><div class="content"><div class="loading">⏳</div></div></div></div>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<?!= include('_app') ?>
+<script>
+const TILES = [
+  { label: 'เปิดระบบ', icon: '🚀', color: '#c8102e' },
+  { label: 'ขอลา',    icon: '📋', color: '#1f2937' },
+  { label: 'My ID',    icon: '🆔', color: '#0f766e' },
+];
+
+(async function () {
+  const r = await bootApp();
+  if (!r) return;
+  if (r.role !== 'owner') { renderWrongRole('owner'); return; }
+  renderPage();
+})();
+
+function renderPage() {
+  U.$('#app').innerHTML = '<div class="app">' +
+    '<div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>สร้าง Rich Menu</h1>' +
+    '<div class="sub">ออกแบบเมนูของ LINE OA + กดสร้าง</div></div>' +
+    '<div class="content">' +
+    '<a class="back-link" href="' + pageUrl('owner') + '">← กลับ</a>' +
+
+    '<div class="card">' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Preview (2500x843)</div>' +
+      '<div class="preview-wrap"><canvas id="cv" width="2500" height="843"></canvas></div>' +
+    '</div>' +
+
+    '<div class="card">' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;">ปรับแต่ง 3 ช่อง</div>' +
+      '<div class="tile-row">' +
+        TILES.map(function (t, i) {
+          return '<div class="tile">' +
+            '<label>ไอคอน</label><input type="text" id="ic' + i + '" value="' + U.esc(t.icon) + '" maxlength="2">' +
+            '<label style="margin-top:6px;">ข้อความ</label><input type="text" id="lb' + i + '" value="' + U.esc(t.label) + '" maxlength="14">' +
+            '<label style="margin-top:6px;">สีพื้น</label><input type="color" id="bg' + i + '" value="' + t.color + '">' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+
+    '<button class="btn btn-primary btn-block" id="genBtn" style="margin-top:14px;">🚀 สร้าง Rich Menu</button>' +
+    '<div id="msg" style="margin-top:10px;"></div>' +
+
+    '<div style="margin-top:20px;padding:10px;background:#fef9e7;border-radius:8px;font-size:12px;color:#92400e;">' +
+      'ℹ️ ระบบจะ render image จาก canvas → upload Drive → ส่งให้ LINE → ตั้งเป็น default menu ของทุก user' +
+    '</div>' +
+
+    '</div></div>';
+
+  // ผูก event auto-redraw
+  TILES.forEach(function (_, i) {
+    ['ic', 'lb', 'bg'].forEach(function (k) {
+      U.$('#' + k + i).addEventListener('input', drawCanvas);
+    });
+  });
+  U.$('#genBtn').addEventListener('click', submit);
+  drawCanvas();
+}
+
+function readTiles() {
+  return TILES.map(function (_, i) {
+    return {
+      icon:  U.$('#ic' + i).value || '',
+      label: U.$('#lb' + i).value || '',
+      color: U.$('#bg' + i).value || '#000',
+    };
+  });
+}
+
+function drawCanvas() {
+  const c = U.$('#cv');
+  const ctx = c.getContext('2d');
+  const W = 2500, H = 843;
+  const tiles = readTiles();
+  const cw = W / tiles.length;
+
+  tiles.forEach(function (t, i) {
+    // background
+    ctx.fillStyle = t.color;
+    ctx.fillRect(i * cw, 0, cw, H);
+    // separator (ขาวบางๆ)
+    if (i > 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(i * cw, 80, 2, H - 160);
+    }
+    // icon
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '220px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+    ctx.fillText(t.icon, i * cw + cw / 2, H / 2 - 90);
+    // label
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 110px "Sukhumvit Set","Noto Sans Thai",sans-serif';
+    ctx.fillText(t.label, i * cw + cw / 2, H / 2 + 170);
+  });
+}
+
+async function submit() {
+  const btn = U.$('#genBtn');
+  btn.disabled = true;
+  U.$('#msg').innerHTML = '<div class="alert alert-info">⏳ กำลังอัปโหลดและสร้าง rich menu...</div>';
+
+  try {
+    const c = U.$('#cv');
+    const dataUrl = c.toDataURL('image/png');
+    const b64 = dataUrl.split(',')[1];
+
+    const r = await apiCall('setupRichMenuFromBase64', { imageBase64: b64 });
+    U.$('#msg').innerHTML = '<div class="alert alert-success">✅ สร้างเรียบร้อย<br>' +
+      '<small>richMenuId: ' + U.esc(r.richMenuId) + '<br>' +
+      'image: <a href="https://drive.google.com/file/d/' + U.esc(r.fileId) + '/view" target="_blank">เปิดใน Drive</a></small></div>' +
+      '<p style="font-size:13px;color:var(--muted);margin-top:10px;">เปิด LINE OA ดู menu ที่ chat bar — ถ้าไม่เห็น ลอง force close + เปิด LINE ใหม่</p>';
+    btn.textContent = 'สร้างใหม่อีกครั้ง';
+    btn.disabled = false;
+  } catch (err) {
+    U.$('#msg').innerHTML = '<div class="alert alert-error">❌ ' + U.esc(err.message) + '</div>';
+    btn.disabled = false;
+  }
+}
+</script>
+</body></html>

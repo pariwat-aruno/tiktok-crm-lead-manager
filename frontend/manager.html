@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="th"><head><meta charset="UTF-8">
+<title>ผู้จัดการ — TikTok CRM</title>
+<style>
+  :root {
+    --primary: #c8102e;
+    --primary-dark: #9a0c24;
+    --primary-light: #fff5f5;
+    --text: #1a1a1a;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --success: #16a34a;
+    --warn: #d97706;
+    --danger: #dc2626;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: -apple-system, "Helvetica Neue", "Sukhumvit Set", "Noto Sans Thai", sans-serif;
+    font-size: 15px; background: #fafafa; color: var(--text); line-height: 1.5;
+  }
+  .app { max-width: 480px; margin: 0 auto; min-height: 100vh; background: #fff; padding-bottom: 60px; }
+  .header { background: var(--primary); color: #fff; padding: 14px 16px; }
+  .brand { font-size: 11px; opacity: .85; letter-spacing: 1px; text-transform: uppercase; }
+  .header h1 { font-size: 18px; margin-top: 2px; }
+  .header .sub { font-size: 12px; opacity: .85; margin-top: 2px; }
+  .content { padding: 14px; }
+  .card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+  .btn { display: inline-block; padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-size: 14px; font-family: inherit; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-outline { background: #fff; color: var(--primary); border: 1.5px solid var(--primary); }
+  .btn-success { background: var(--success); color: #fff; }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-block { display: block; width: 100%; }
+  .btn-sm { padding: 6px 10px; font-size: 12px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .input, .textarea, .select { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; font-family: inherit; }
+  .textarea { min-height: 80px; resize: vertical; }
+  .loading { text-align: center; padding: 40px 20px; color: var(--muted); }
+  .empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+  .alert { padding: 10px 12px; border-radius: 8px; margin: 8px 0; font-size: 13px; }
+  .alert-error { background: #fee2e2; color: var(--danger); }
+  .alert-warn { background: #fef3c7; color: #92400e; }
+  .alert-success { background: #dcfce7; color: #15803d; }
+  .alert-info { background: var(--primary-light); color: var(--primary-dark); }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 12px; overflow-x: auto; }
+  .tab { flex: none; padding: 12px 14px; cursor: pointer; border-bottom: 3px solid transparent; font-size: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .badge { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #fef3c7; color: #92400e; }
+  .badge-overdue { background: #fee2e2; color: var(--danger); }
+  .badge-info { background: #dbeafe; color: #1e40af; }
+  .badge-success { background: #dcfce7; color: #15803d; }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+  .stat-box { background: #f9fafb; padding: 12px; border-radius: 8px; text-align: center; }
+  .stat-box .v { font-size: 22px; font-weight: 700; }
+  .stat-box .v.red { color: var(--danger); }
+  .stat-box .v.green { color: var(--success); }
+  .stat-box .k { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; z-index: 100; }
+  .modal { background: #fff; width: 100%; max-width: 480px; margin: 0 auto; border-radius: 12px 12px 0 0; padding: 16px; max-height: 80vh; overflow-y: auto; }
+  .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; color: var(--primary-dark); }
+  .toast { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 10px 18px; border-radius: 8px; z-index: 9999; font-size: 14px; }
+  .toast.error { background: var(--danger); }
+  .copy-id-box { background: #f9fafb; padding: 14px; border-radius: 8px; margin: 14px 0; font-family: monospace; word-break: break-all; font-size: 12px; border: 1px solid var(--border); }
+  .back-link { display: inline-block; padding: 8px 0; color: var(--primary); cursor: pointer; font-weight: 600; }
+  .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+  .row .k { color: var(--muted); }
+  .img-preview { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+  .upload-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; }
+  .upload-zone input { display: none; }
+</style>
+
+</head><body>
+<div id="app"><div class="app"><div class="header"><div class="brand">TikTok CRM</div><h1>เข้าระบบ...</h1></div><div class="content"><div class="loading">⏳</div></div></div></div>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>window.__CRM_FRONTEND_BASE = window.location.href.replace(/[^\/]*$/, "");</script>
+<script>
+  const APP = {
+    brand: "TikTok CRM",
+    liffId: "2010082378-Dyr6fRBQ",
+    apiUrl: "https://script.google.com/macros/s/AKfycbyIffdlua-m7zW4iqfW81EbIVljPrW31I-OCGveSS1biImW-UpkywwslPf0LJAH2vKoWQ/exec",
+    frontendBase: window.__CRM_FRONTEND_BASE || "",
+    page: "manager",
+    params: Object.fromEntries(new URLSearchParams(window.location.search).entries()),
+  };
+
+  const ERR_TH = {
+    'no_line_user_id': 'ไม่พบ LINE User ID',
+    'forbidden': 'ไม่มีสิทธิ์ทำรายการนี้',
+    'not_staff': 'ต้องเป็นพนักงานเท่านั้น',
+    'not_lead': 'ต้องเป็นหัวหน้าทีมขึ้นไป',
+    'not_registered': 'ยังไม่ได้ลงทะเบียน',
+    'pending_review': 'คำขอกำลังรอ admin อนุมัติ',
+    'banned': 'บัญชีถูกระงับ',
+    'inactive': 'บัญชีไม่ active',
+    'already_registered': 'ลงทะเบียนอยู่แล้ว',
+    'already_reviewed': 'รายการนี้ถูกตรวจสอบไปแล้ว',
+    'already_closed': 'รายการนี้ปิดไปแล้ว',
+    'already_banned': 'พนักงานถูก ban อยู่แล้ว',
+    'already_assigned': 'ผูก SKU นี้ให้แล้ว',
+    'not_found': 'ไม่พบข้อมูล',
+    'lead_not_found': 'ไม่พบ lead',
+    'employee_not_found': 'ไม่พบพนักงาน',
+    'sku_not_found': 'ไม่พบสินค้า',
+    'sku_exists': 'SKU นี้มีอยู่แล้ว',
+    'master_not_found': 'ไม่พบลูกค้าหลัก',
+    'merge_not_found': 'ไม่พบลูกค้าที่จะรวม',
+    'no_employee': 'ยังไม่อนุมัติเป็นพนักงาน',
+    'no_employee_id': 'ระบุพนักงานไม่ถูกต้อง',
+    'no_sku': 'ระบุ SKU',
+    'no_master': 'ระบุลูกค้าหลัก',
+    'no_merge_ids': 'เลือกลูกค้าที่จะรวมอย่างน้อย 1 ราย',
+    'invalid_full_name': 'ชื่อ-นามสกุลสั้นเกินไป',
+    'invalid_nick_name': 'กรอกชื่อเล่น',
+    'invalid_phone': 'เบอร์โทรไม่ถูกต้อง',
+    'invalid_role': 'role ไม่ถูกต้อง (staff/lead/manager)',
+    'invalid_range': 'ช่วงวันไม่ถูกต้อง',
+    'invalid_result': 'ผลโทรไม่ถูกต้อง',
+    'invalid_reject_reason': 'เหตุผลไม่ถูกต้อง',
+    'invalid_postpone_days': 'จำนวนวันเลื่อนไม่ถูกต้อง (1-90)',
+    'no_selfie': 'ต้องถ่ายรูป selfie',
+    'no_id_card': 'ต้องถ่ายรูปบัตรประชาชน',
+    'no_dates': 'เลือกวันเริ่ม-สิ้นสุด',
+    'no_csv': 'เลือกไฟล์ CSV',
+    'cannot_leave_in_past': 'ลาย้อนหลังไม่ได้',
+    'cannot_ban_self': 'ห้ามแบนตัวเอง',
+    'cannot_ban_higher_role': 'ห้ามแบนคนที่ role สูงกว่าหรือเท่ากับตน',
+    'cannot_create_owner_via_approval': 'ไม่สามารถสร้าง owner ผ่าน flow นี้',
+    'cannot_cancel': 'ยกเลิกไม่ได้แล้ว',
+    'exceeds_max_days': 'เกินจำนวนวันลาที่อนุญาต',
+    'overlap_existing': 'ทับช่วงลาเดิม',
+    'overlap_existing_leave': 'ทับช่วงลาเดิม',
+    'out_of_scope': 'อยู่นอกขอบเขตการดูแล',
+    'reason_required': 'กรุณาระบุเหตุผล',
+    'reason_too_short': 'เหตุผลสั้นเกินไป',
+    'not_yours': 'รายการนี้ไม่ใช่ของคุณ',
+    'not_your_lead': 'lead นี้ไม่ใช่ของคุณ',
+    'not_banned': 'พนักงานคนนี้ยังไม่ถูกแบน',
+    'not_blacklist_req': 'lead นี้ไม่ใช่คำขอ blacklist',
+    'not_assigned': 'ยังไม่ได้ผูก SKU นี้',
+    'target_not_found': 'ไม่พบพนักงานเป้าหมาย',
+    'query_too_short': 'พิมพ์อย่างน้อย 2 ตัวอักษร',
+    'missing_params': 'ข้อมูลไม่ครบ',
+    'missing_columns': 'CSV ขาดคอลัมน์ที่จำเป็น',
+    'parse_failed': 'อ่าน CSV ไม่สำเร็จ',
+    'decode_failed': 'ถอดรหัสไฟล์ไม่สำเร็จ',
+    'csv_empty': 'CSV ไม่มีข้อมูล',
+    'rollback_expired': 'หมดเวลา rollback (24 ชม.)',
+    'already_rolled_back': 'session นี้ถูก rollback แล้ว',
+    'no_session_id': 'ระบุ session',
+    'server_error': 'เกิดข้อผิดพลาดที่ระบบ',
+    'invalid_json': 'ส่งข้อมูลผิดรูปแบบ',
+    'unknown_action': 'ไม่รู้จัก action นี้',
+    'not_implemented': 'ยังไม่รองรับ',
+  };
+
+  function mapErr(code, detail) {
+    const base = ERR_TH[code] || code || 'เกิดข้อผิดพลาด';
+    return detail && code === 'server_error' ? base + ' (' + detail + ')' : base;
+  }
+
+  const U = {
+    $: function (s, r) { return (r || document).querySelector(s); },
+    $: function (s, r) { return Array.from((r || document).querySelectorAll(s)); },
+    esc: function (s) {
+      if (s == null) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
+    copy: async function (text) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        U.toast('คัดลอกแล้ว');
+        return true;
+      } catch (e) { U.toast('คัดลอกไม่สำเร็จ', true); return false; }
+    },
+    toast: function (msg, err) {
+      const t = document.createElement('div');
+      t.className = 'toast' + (err ? ' error' : '');
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(function () { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; }, 1400);
+      setTimeout(function () { t.remove(); }, 1900);
+    },
+    showError: function (msg) {
+      document.body.innerHTML = '<div class="app"><div class="content"><div class="alert alert-error">' + U.esc(msg) + '</div></div></div>';
+    },
+    fmtDate: function (iso) {
+      if (!iso) return '-';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      return d.getDate() + '/' + (d.getMonth() + 1) + '/' + ((d.getFullYear() + 543) % 100);
+    },
+    /**
+     * Modal ทั่วไป — return Promise<value | null> (null = cancel)
+     * opts: { title, body (HTML string), okText, cancelText, danger, onShow(modalEl) }
+     * onShow รับ modal element + ฟังก์ชัน resolve เพื่อ submit ค่า
+     */
+    _modal: function (opts) {
+      return new Promise(function (resolve) {
+        const bg = document.createElement('div');
+        bg.className = 'modal-bg';
+        bg.innerHTML =
+          '<div class="modal">' +
+            (opts.title ? '<div class="modal-title">' + U.esc(opts.title) + '</div>' : '') +
+            '<div class="modal-body">' + (opts.body || '') + '</div>' +
+            '<div style="display:flex;gap:8px;margin-top:14px;">' +
+              '<button class="btn btn-outline" data-act="cancel" style="flex:1;">' + U.esc(opts.cancelText || 'ยกเลิก') + '</button>' +
+              '<button class="btn ' + (opts.danger ? 'btn-danger' : 'btn-primary') + '" data-act="ok" style="flex:1;">' + U.esc(opts.okText || 'ตกลง') + '</button>' +
+            '</div>' +
+          '</div>';
+        document.body.appendChild(bg);
+        const modal = bg.querySelector('.modal');
+        let done = false;
+        const close = function (val) {
+          if (done) return; done = true;
+          bg.remove();
+          resolve(val);
+        };
+        bg.addEventListener('click', function (e) {
+          if (e.target === bg) close(null);
+        });
+        modal.querySelector('[data-act=cancel]').addEventListener('click', function () { close(null); });
+        const okBtn = modal.querySelector('[data-act=ok]');
+        okBtn.addEventListener('click', function () {
+          if (opts.onSubmit) {
+            const v = opts.onSubmit(modal);
+            if (v !== undefined) close(v);
+          } else { close(true); }
+        });
+        if (opts.onShow) opts.onShow(modal, close);
+      });
+    },
+    confirm: function (msg, opts) {
+      opts = opts || {};
+      return U._modal({
+        title: opts.title || 'ยืนยัน',
+        body: '<p style="font-size:14px;color:var(--text);white-space:pre-wrap;">' + U.esc(msg) + '</p>',
+        okText: opts.okText || 'ยืนยัน', cancelText: opts.cancelText || 'ยกเลิก',
+        danger: !!opts.danger,
+      });
+    },
+    prompt: function (msg, opts) {
+      opts = opts || {};
+      const multiline = !!opts.multiline;
+      const id = 'pr_' + Math.random().toString(36).slice(2, 8);
+      const body =
+        '<p style="font-size:13px;color:var(--muted);margin-bottom:8px;white-space:pre-wrap;">' + U.esc(msg) + '</p>' +
+        (multiline
+          ? '<textarea id="' + id + '" class="textarea" placeholder="' + U.esc(opts.placeholder || '') + '">' + U.esc(opts.default || '') + '</textarea>'
+          : '<input id="' + id + '" class="input" type="' + (opts.type || 'text') + '" placeholder="' + U.esc(opts.placeholder || '') + '" value="' + U.esc(opts.default || '') + '">');
+      return U._modal({
+        title: opts.title || 'กรุณากรอก', body: body,
+        okText: opts.okText || 'ตกลง',
+        onShow: function (modal) {
+          const el = modal.querySelector('#' + id);
+          if (el) setTimeout(function () { el.focus(); }, 50);
+        },
+        onSubmit: function (modal) {
+          const el = modal.querySelector('#' + id);
+          const v = el ? el.value.trim() : '';
+          if (opts.minLen && v.length < opts.minLen) {
+            U.toast('สั้นเกินไป (อย่างน้อย ' + opts.minLen + ' ตัวอักษร)', true);
+            return undefined;
+          }
+          if (opts.required && !v) {
+            U.toast('กรุณากรอก', true); return undefined;
+          }
+          return v;
+        },
+      });
+    },
+    /**
+     * select: opts.options = [{value, label, description?}]
+     */
+    select: function (msg, opts) {
+      opts = opts || {};
+      const id = 'sel_' + Math.random().toString(36).slice(2, 8);
+      const body =
+        '<p style="font-size:13px;color:var(--muted);margin-bottom:8px;">' + U.esc(msg) + '</p>' +
+        '<div id="' + id + '">' +
+          (opts.options || []).map(function (o) {
+            return '<label style="display:block;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;">' +
+              '<input type="radio" name="' + id + '_r" value="' + U.esc(o.value) + '"' + (o.value === opts.default ? ' checked' : '') + '> ' +
+              U.esc(o.label) +
+              (o.description ? '<div style="font-size:11px;color:var(--muted);margin-top:2px;margin-left:22px;">' + U.esc(o.description) + '</div>' : '') +
+            '</label>';
+          }).join('') +
+        '</div>';
+      return U._modal({
+        title: opts.title || 'เลือก', body: body,
+        okText: opts.okText || 'ตกลง',
+        onSubmit: function (modal) {
+          const r = modal.querySelector('input[name="' + id + '_r"]:checked');
+          if (!r) { U.toast('กรุณาเลือก', true); return undefined; }
+          return r.value;
+        },
+      });
+    },
+  };
+
+  const AUTH = {
+    lineUserId: null, displayName: null,
+    role: null, employeeId: null, name: null,
+  };
+
+  function _routeLiffStateIfNeeded() {
+    if (!APP.frontendBase || !APP.params || !APP.params['liff.state']) return false;
+    const state = String(APP.params['liff.state'] || '').replace(/^\/+/, '');
+    if (!state) return false;
+    const path = state.split('?')[0].replace(/\.html$/i, '').toLowerCase();
+    const pageMap = {
+      id: 'myid', myid: 'myid',
+      reg: 'register', register: 'register',
+      app: 'app',
+      staff: 'staff', lead: 'lead', manager: 'manager', owner: 'owner',
+      leave: 'leave', genmenu: 'genmenu', menu: 'genmenu',
+    };
+    const target = pageMap[path];
+    if (!target || target === APP.page) return false;
+    const query = {};
+    const q = state.indexOf('?') >= 0 ? state.slice(state.indexOf('?') + 1) : '';
+    new URLSearchParams(q).forEach(function (v, k) { query[k] = v; });
+    location.replace(pageUrl(target, query));
+    return true;
+  }
+
+  /**
+   * navigate ไป page อื่น — ใช้ absolute URL เสมอ
+   * เหตุผล: หลัง Apps Script redirect, location = googleusercontent.com/macros/echo?user_content_key=...
+   * ถ้าใช้ relative '?page=x' จะทำให้ user_content_key หาย → หน้าขาว
+   */
+  function pageUrl(page, params) {
+    const pageFiles = {
+      index: 'index.html',
+      myid: 'myid.html',
+      register: 'register.html',
+      app: 'app.html',
+      staff: 'staff.html',
+      lead: 'lead.html',
+      manager: 'manager.html',
+      owner: 'owner.html',
+      leave: 'leave.html',
+      genmenu: 'genmenu.html',
+      menu: 'genmenu.html',
+    };
+    let url;
+    if (APP.frontendBase) {
+      const base = APP.frontendBase.replace(/\/?$/, '/');
+      url = base + (pageFiles[page] || pageFiles.index);
+    } else {
+      url = APP.apiUrl + (APP.apiUrl.indexOf('?') >= 0 ? '&' : '?') + 'page=' + encodeURIComponent(page);
+    }
+    if (params) Object.keys(params).forEach(function (k) {
+      url += (url.indexOf('?') >= 0 ? '&' : '?') + k + '=' + encodeURIComponent(params[k]);
+    });
+    return url;
+  }
+  function gotoPage(page, params) {
+    location.replace(pageUrl(page, params));
+  }
+
+  _routeLiffStateIfNeeded();
+
+  // แสดง status ตอน boot — ให้ผู้ใช้เห็นว่าค้างที่ step ไหน (ไม่ใช่หน้าขาว/นาฬิกาทรายเฉยๆ)
+  function _bootStatus(msg) {
+    const h = document.querySelector('.loading') || document.querySelector('#app .content');
+    if (h) h.textContent = msg;
+  }
+
+  function _withTimeout(promise, ms, label) {
+    return Promise.race([
+      promise,
+      new Promise(function (_, reject) {
+        setTimeout(function () { reject(new Error((label || 'operation') + ' timeout (' + (ms / 1000) + 's)')); }, ms);
+      }),
+    ]);
+  }
+
+  async function initLiff() {
+    const saved = _savedIdentity();
+    if (saved) {
+      AUTH.lineUserId = saved.lineUserId;
+      AUTH.displayName = saved.displayName;
+    }
+
+    if (APP.liffId && typeof liff !== 'undefined') {
+      try {
+        _bootStatus('กำลังเชื่อมต่อ LINE...');
+        await _withTimeout(liff.init({ liffId: APP.liffId }), 20000, 'liff.init');
+
+        if (!liff.isLoggedIn()) {
+          _bootStatus('กำลัง login LINE...');
+          liff.login({ redirectUri: pageUrl(APP.page || 'app') });
+          return new Promise(function () {}); // ค้างรอ redirect (ตั้งใจ)
+        }
+
+        _bootStatus('กำลังโหลดโปรไฟล์...');
+        const p = await _withTimeout(liff.getProfile(), 15000, 'liff.getProfile');
+        AUTH.lineUserId = p.userId;
+        AUTH.displayName = p.displayName;
+        _saveIdentity(p.userId, p.displayName);
+        return p;
+      } catch (err) {
+        if (saved) return { userId: saved.lineUserId, displayName: saved.displayName };
+        _bootStatus('LINE LIFF ไม่พร้อม ใช้โหมด Apps Script...');
+      }
+    }
+
+    const manual = await _manualIdentity();
+    AUTH.lineUserId = manual.userId;
+    AUTH.displayName = manual.displayName;
+    return manual;
+  }
+
+  function _savedIdentity() {
+    try {
+      if (APP.params && APP.params.reset) {
+        localStorage.removeItem('CRM_LINE_USER_ID');
+        localStorage.removeItem('CRM_LINE_DISPLAY_NAME');
+        return null;
+      }
+      const uid = localStorage.getItem('CRM_LINE_USER_ID');
+      if (!uid) return null;
+      return {
+        lineUserId: uid,
+        displayName: localStorage.getItem('CRM_LINE_DISPLAY_NAME') || '',
+      };
+    } catch (e) { return null; }
+  }
+
+  function _saveIdentity(userId, displayName) {
+    try {
+      localStorage.setItem('CRM_LINE_USER_ID', userId || '');
+      localStorage.setItem('CRM_LINE_DISPLAY_NAME', displayName || '');
+    } catch (e) {}
+  }
+
+  function _manualIdentity() {
+    return new Promise(function (resolve) {
+      document.body.innerHTML =
+        '<div class="app"><div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>เข้าสู่ระบบ</h1></div>' +
+        '<div class="content"><div class="card">' +
+        '<div class="alert alert-info">โหมด Apps Script-only: กรอก LINE User ID ของคุณเพื่อเข้าใช้งาน</div>' +
+        '<label style="font-size:13px;font-weight:600;display:block;margin:12px 0 4px;">LINE User ID *</label>' +
+        '<input id="manualUid" class="input" placeholder="เช่น Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">' +
+        '<label style="font-size:13px;font-weight:600;display:block;margin:12px 0 4px;">ชื่อ LINE / ชื่อเล่น</label>' +
+        '<input id="manualName" class="input" placeholder="optional">' +
+        '<button id="manualLoginBtn" class="btn btn-primary btn-block" style="margin-top:14px;">เข้าใช้งาน</button>' +
+        '<p style="font-size:12px;color:var(--muted);margin-top:12px;">ถ้าไม่ทราบ ID ให้พิมพ์ <b>id</b> ในแชท LINE OA แล้วคัดลอกค่าที่ระบบตอบกลับมา</p>' +
+        '</div></div></div>';
+      const btn = document.querySelector('#manualLoginBtn');
+      btn.addEventListener('click', function () {
+        const uid = document.querySelector('#manualUid').value.trim();
+        const name = document.querySelector('#manualName').value.trim();
+        if (!uid || uid.length < 20 || uid.charAt(0) !== 'U') {
+          U.toast('LINE User ID ต้องขึ้นต้นด้วย U', true);
+          return;
+        }
+        _saveIdentity(uid, name);
+        resolve({ userId: uid, displayName: name });
+      });
+    });
+  }
+
+  async function apiCall(action, args) {
+    args = Object.assign({}, args || {}, {
+      action: action, lineUserId: AUTH.lineUserId,
+    });
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      const data = await _withTimeout(new Promise(function (resolve, reject) {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(reject)
+          .apiRoute(action, args);
+      }), 30000, 'API ' + action);
+      if (!data.ok) {
+        const e = new Error(mapErr(data.error, data.detail));
+        e.code = data.error; e.detail = data.detail; e.pendingId = data.pendingId;
+        throw e;
+      }
+      return data;
+    }
+
+    const res = await _withTimeout(fetch(APP.apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(args),
+      redirect: 'follow',
+    }), 30000, 'API ' + action);
+    if (!res.ok) throw new Error('เชื่อมต่อระบบไม่สำเร็จ (HTTP ' + res.status + ')');
+    const data = await res.json();
+    if (!data.ok) {
+      const e = new Error(mapErr(data.error, data.detail));
+      e.code = data.error; e.detail = data.detail; e.pendingId = data.pendingId;
+      throw e;
+    }
+    return data;
+  }
+
+  async function bootApp() {
+    try { await initLiff(); }
+    catch (err) {
+      U.showError('เริ่มระบบไม่สำเร็จ: ' + err.message);
+      return null;
+    }
+
+    try {
+      _bootStatus('กำลังตรวจสิทธิ์...');
+      const r = await apiCall('getMyRole');
+      AUTH.role = r.role;
+      AUTH.employeeId = r.employeeId;
+      AUTH.name = r.displayName;
+      return r;
+    } catch (err) {
+      if (err.code === 'not_registered') {
+        gotoPage('register');
+        return null;
+      }
+      if (err.code === 'pending_review') {
+        renderPending();
+        return null;
+      }
+      if (err.code === 'banned') {
+        renderBanned(err.detail || '');
+        return null;
+      }
+      if (err.code === 'inactive') {
+        renderInactive();
+        return null;
+      }
+      U.showError(err.message);
+      return null;
+    }
+  }
+
+  function renderPending() {
+    document.body.innerHTML =
+      '<div class="app"><div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>รออนุมัติ</h1></div>' +
+      '<div class="content"><div class="card" style="text-align:center;">' +
+      '<p style="margin:14px 0;">คำขอลงทะเบียนของคุณกำลังรอ Admin อนุมัติ</p>' +
+      '<p style="color:var(--muted);font-size:13px;">เมื่อ approve แล้ว ระบบจะส่ง LINE แจ้งคุณ</p>' +
+      '</div></div></div>';
+  }
+
+  function renderBanned(reason) {
+    document.body.innerHTML =
+      '<div class="app"><div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>บัญชีถูกระงับ</h1></div>' +
+      '<div class="content"><div class="card">' +
+      '<p>เหตุผล: ' + U.esc(reason || '-') + '</p>' +
+      '<p style="color:var(--muted);font-size:13px;margin-top:8px;">ติดต่อ owner หากมีข้อสงสัย</p>' +
+      '</div></div></div>';
+  }
+
+  function renderInactive() {
+    document.body.innerHTML =
+      '<div class="app"><div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>บัญชีไม่ active</h1></div>' +
+      '<div class="content"><div class="card"><p>กรุณาติดต่อ admin</p></div></div></div>';
+  }
+
+  function renderWrongRole(required) {
+    document.body.innerHTML =
+      '<div class="app"><div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>ไม่มีสิทธิ์</h1></div>' +
+      '<div class="content"><div class="card">' +
+      '<p>หน้านี้สำหรับ <b>' + required + '</b> เท่านั้น<br>คุณเป็น <b>' + AUTH.role + '</b></p>' +
+      '<a class="btn btn-outline btn-block" href="' + pageUrl('app') + '" style="margin-top:12px;">กลับหน้าหลัก</a>' +
+      '</div></div></div>';
+  }
+</script>
+
+<script>
+(async function () {
+  const r = await bootApp();
+  if (!r) return;
+  if (['manager', 'owner'].indexOf(r.role) < 0) { renderWrongRole('manager+'); return; }
+  renderShell();
+  loadTab('dashboard');
+})();
+
+function renderShell() {
+  U.$('#app').innerHTML = '<div class="app">' +
+    '<div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>ผู้จัดการ</h1>' +
+    '<div class="sub">' + U.esc(AUTH.name || '') + ' · <a href="' + pageUrl('leave') + '" style="color:#fff;text-decoration:underline;">ขอลา</a></div></div>' +
+    '<div class="content">' +
+      '<div class="tabs">' +
+        '<div class="tab active" data-tab="dashboard">📊 Dashboard</div>' +
+        '<div class="tab" data-tab="pending">✋ Pending Users</div>' +
+        '<div class="tab" data-tab="employees">👥 พนักงาน</div>' +
+        '<div class="tab" data-tab="leaves">📋 อนุมัติลา</div>' +
+        '<div class="tab" data-tab="performance">📈 Performance</div>' +
+      '</div>' +
+      '<div id="tabBody"></div>' +
+    '</div></div>';
+  U.$$('.tab').forEach(function (el) {
+    el.addEventListener('click', function () {
+      U.$$('.tab').forEach(function (t) { t.classList.remove('active'); });
+      el.classList.add('active');
+      loadTab(el.dataset.tab);
+    });
+  });
+}
+
+async function loadTab(name) {
+  const body = U.$('#tabBody');
+  body.innerHTML = '<div class="loading">⏳</div>';
+  try {
+    if (name === 'dashboard') await renderDashboard();
+    else if (name === 'pending') await renderPending();
+    else if (name === 'employees') await renderEmployees();
+    else if (name === 'leaves') await renderLeaves();
+    else if (name === 'performance') await renderPerformance();
+  } catch (err) { body.innerHTML = '<div class="alert alert-error">' + U.esc(err.message) + '</div>'; }
+}
+
+async function renderDashboard() {
+  const r = await apiCall('getManagerDashboard');
+  const teams = r.teams || [];
+  U.$('#tabBody').innerHTML = teams.length === 0
+    ? '<div class="card empty">ยังไม่มีทีมในสายงาน</div>'
+    : teams.map(function (t) {
+        return '<div class="card"><div style="font-weight:600;">' + U.esc(t.team) + ' (' + t.memberCount + ' คน)</div>' +
+          '<div class="stat-grid three" style="margin-top:8px;">' +
+            '<div class="stat-box"><div class="v">' + t.pending + '</div><div class="k">ค้าง</div></div>' +
+            '<div class="stat-box"><div class="v red">' + t.overdue + '</div><div class="k">เลย SLA</div></div>' +
+            '<div class="stat-box"><div class="v green">' + t.boughtToday + '</div><div class="k">ซื้อ</div></div>' +
+          '</div></div>';
+      }).join('');
+}
+
+async function renderPending() {
+  const r = await apiCall('getPendingUsers');
+  const list = r.pending || [];
+  if (list.length === 0) { U.$('#tabBody').innerHTML = '<div class="card empty">ไม่มีคำขอลงทะเบียน</div>'; return; }
+  U.$('#tabBody').innerHTML = list.map(function (p) {
+    return '<div class="card">' +
+      '<div style="display:flex;gap:10px;">' +
+        '<img class="img-preview" src="' + U.esc(p.selfieUrl) + '" alt="selfie" onerror="this.style.display=\'none\'">' +
+        '<div style="flex:1;">' +
+          '<div style="font-weight:600;">' + U.esc(p.fullName) + ' (' + U.esc(p.nickName) + ')</div>' +
+          '<div style="font-size:12px;color:var(--muted);">📱 ' + U.esc(p.phone) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);">ส่ง: ' + U.esc(p.requestedAt) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-top:10px;">' +
+        '<a href="' + U.esc(p.selfieUrl) + '" target="_blank" style="font-size:12px;color:var(--primary);">📸 ดู selfie</a> · ' +
+        '<a href="' + U.esc(p.idCardUrl) + '" target="_blank" style="font-size:12px;color:var(--primary);">🪪 ดูบัตร</a>' +
+      '</div>' +
+      '<div style="margin-top:10px;display:flex;gap:8px;">' +
+        '<button class="btn btn-success" style="flex:1;" data-action="approve" data-id="' + U.esc(p.pendingId) + '">อนุมัติ</button>' +
+        '<button class="btn btn-outline" style="flex:1;" data-action="reject" data-id="' + U.esc(p.pendingId) + '">ปฏิเสธ</button>' +
+      '</div></div>';
+  }).join('');
+  U.$$('[data-action]').forEach(function (b) {
+    b.addEventListener('click', function () { actPending(b.dataset.action, b.dataset.id); });
+  });
+}
+
+async function actPending(action, pendingId) {
+  if (action === 'approve') {
+    const data = await openApproveModal();
+    if (!data) return;
+    try {
+      await apiCall('approvePendingUser', {
+        pendingId: pendingId, decision: 'approve',
+        role: data.role, team: data.team, productSkus: data.skus,
+      });
+      U.toast('อนุมัติแล้ว');
+      renderPending();
+    } catch (e) { U.toast(e.message, true); }
+  } else {
+    const reason = await U.prompt('เหตุผลที่ไม่อนุมัติ?', { title: 'ปฏิเสธคำขอ', required: true });
+    if (!reason) return;
+    try {
+      await apiCall('approvePendingUser', { pendingId: pendingId, decision: 'reject', rejectionReason: reason });
+      U.toast('ปฏิเสธแล้ว');
+      renderPending();
+    } catch (e) { U.toast(e.message, true); }
+  }
+}
+
+function openApproveModal() {
+  return U._modal({
+    title: 'อนุมัติพนักงานใหม่',
+    body:
+      '<label style="font-size:12px;font-weight:600;">Role *</label>' +
+      '<select id="ap_role" class="select" style="margin:4px 0 10px;">' +
+        '<option value="staff">staff (พนักงานโทร)</option>' +
+        '<option value="lead">lead (หัวหน้าทีม)</option>' +
+        '<option value="manager">manager (ผู้จัดการ)</option>' +
+      '</select>' +
+      '<label style="font-size:12px;font-weight:600;">ทีม</label>' +
+      '<input id="ap_team" class="input" placeholder="เช่น ทีม A" style="margin:4px 0 10px;">' +
+      '<label style="font-size:12px;font-weight:600;">SKU ที่ดูแล (คั่นด้วย comma)</label>' +
+      '<input id="ap_skus" class="input" placeholder="SKU-001,SKU-002" style="margin:4px 0 10px;">',
+    okText: 'อนุมัติ',
+    onSubmit: function (modal) {
+      const role = modal.querySelector('#ap_role').value;
+      const team = modal.querySelector('#ap_team').value.trim();
+      const skus = modal.querySelector('#ap_skus').value
+        .split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      return { role: role, team: team, skus: skus };
+    },
+  });
+}
+
+async function renderLeaves() {
+  const r = await apiCall('getPendingLeaves');
+  const list = r.pending || [];
+  if (list.length === 0) { U.$('#tabBody').innerHTML = '<div class="card empty">ไม่มีคำขอลา</div>'; return; }
+  U.$('#tabBody').innerHTML = list.map(function (l) {
+    return '<div class="card" data-id="' + U.esc(l.leaveId) + '">' +
+      '<div style="font-weight:600;">' + U.esc(l.employeeName) + '</div>' +
+      '<div style="font-size:13px;">' + U.esc(l.startDate) + ' ถึง ' + U.esc(l.endDate) + ' (' + U.esc(l.leaveType) + ')</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin:4px 0;">"' + U.esc(l.reason || '-') + '"</div>' +
+      '<div style="display:flex;gap:8px;margin-top:8px;">' +
+        '<button class="btn btn-success approve-btn" style="flex:1;">อนุมัติ</button>' +
+        '<button class="btn btn-outline reject-btn" style="flex:1;">ปฏิเสธ</button>' +
+      '</div></div>';
+  }).join('');
+  U.$$('.card[data-id]').forEach(function (row) {
+    const id = row.dataset.id;
+    row.querySelector('.approve-btn').addEventListener('click', async function () {
+      const ok = await U.confirm('อนุมัติคำขอลา?'); if (!ok) return;
+      try { await apiCall('approveLeave', { leaveId: id, approve: true }); U.toast('อนุมัติแล้ว'); renderLeaves(); }
+      catch (e) { U.toast(e.message, true); }
+    });
+    row.querySelector('.reject-btn').addEventListener('click', async function () {
+      const reason = await U.prompt('เหตุผลที่ไม่อนุมัติ?', { required: true });
+      if (!reason) return;
+      try { await apiCall('approveLeave', { leaveId: id, approve: false, rejectionReason: reason }); U.toast('ปฏิเสธแล้ว'); renderLeaves(); }
+      catch (e) { U.toast(e.message, true); }
+    });
+  });
+}
+
+async function renderEmployees() {
+  const r = await apiCall('getAllEmployees');
+  const list = r.employees || [];
+  if (list.length === 0) { U.$('#tabBody').innerHTML = '<div class="card empty">ไม่มีพนักงานในสายงาน</div>'; return; }
+  U.$('#tabBody').innerHTML = list.map(function (e) {
+    const canBan = !e.isBanned && ['manager', 'owner'].indexOf(e.role) < 0;
+    return '<div class="card" style="' + (e.isBanned ? 'opacity:0.5;' : '') + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:start;">' +
+        '<div><div style="font-weight:600;">' + U.esc(e.displayName) + (e.isBanned ? ' 🚫 BANNED' : '') + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);">' + U.esc(e.employeeId) + ' · ' + U.esc(e.role) + ' · ' + U.esc(e.team || '-') + '</div>' +
+        (e.onLeave ? '<span class="badge">วันนี้ลา</span>' : '') + '</div>' +
+        (e.isBanned
+          ? '<span class="badge badge-overdue" style="font-size:11px;">ติดต่อ owner ปลด ban</span>'
+          : (canBan
+              ? '<button class="btn btn-danger btn-sm ban-btn" data-id="' + U.esc(e.employeeId) + '">Ban</button>'
+              : '<span style="font-size:11px;color:var(--muted);">role สูง — ban ไม่ได้</span>')) +
+      '</div></div>';
+  }).join('');
+  U.$$('.ban-btn').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      const reason = await U.prompt('ระบุเหตุผลการ Ban (อย่างน้อย 3 ตัวอักษร)\n\nหลังจาก ban: Lead pending จะถูก reassign + products จะถูกปลด + push แจ้ง user', {
+        title: 'Ban พนักงาน', multiline: true, minLen: 3,
+      });
+      if (!reason) return;
+      try {
+        const rr = await apiCall('banEmployee', { employeeId: b.dataset.id, reason: reason });
+        U.toast('Ban · reassign ' + (rr.leadsReassigned || 0) + ' leads');
+        renderEmployees();
+      } catch (e) { U.toast(e.message, true); }
+    });
+  });
+}
+
+async function renderPerformance() {
+  const r = await apiCall('getTeamPerformance', { days: 7 });
+  const stats = r.stats || [];
+  U.$('#tabBody').innerHTML = '<div class="card">' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">7 วันล่าสุด</div>' +
+    (stats.length === 0 ? '<p class="empty">ไม่มีข้อมูล</p>' :
+      stats.map(function (s) {
+        return '<div class="row" style="padding:8px 0;border-bottom:1px solid var(--border);">' +
+          '<div><div style="font-weight:600;">' + U.esc(s.displayName) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);">' + U.esc(s.team || '-') + '</div></div>' +
+          '<div style="font-size:12px;text-align:right;">' +
+            'call ' + s.calls + ' · <span style="color:var(--success);">✓ ' + s.bought + '</span>' +
+            '<br><span style="font-size:10px;color:var(--muted);">conv ' + (s.conversionRate * 100).toFixed(0) + '%</span>' +
+          '</div></div>';
+      }).join('')) +
+    '</div>';
+}
+</script>
+</body></html>

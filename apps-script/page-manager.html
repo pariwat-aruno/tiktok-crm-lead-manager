@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="th"><head><base target="_top"><meta charset="UTF-8">
+<title>ผู้จัดการ — <?= brand ?></title>
+<?!= include('_styles') ?>
+</head><body>
+<div id="app"><div class="app"><div class="header"><div class="brand"><?= brand ?></div><h1>เข้าระบบ...</h1></div><div class="content"><div class="loading">⏳</div></div></div></div>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<?!= include('_app') ?>
+<script>
+(async function () {
+  const r = await bootApp();
+  if (!r) return;
+  if (['manager', 'owner'].indexOf(r.role) < 0) { renderWrongRole('manager+'); return; }
+  renderShell();
+  loadTab('dashboard');
+})();
+
+function renderShell() {
+  U.$('#app').innerHTML = '<div class="app">' +
+    '<div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>ผู้จัดการ</h1>' +
+    '<div class="sub">' + U.esc(AUTH.name || '') + ' · <a href="' + pageUrl('leave') + '" style="color:#fff;text-decoration:underline;">ขอลา</a></div></div>' +
+    '<div class="content">' +
+      '<div class="tabs">' +
+        '<div class="tab active" data-tab="dashboard">📊 Dashboard</div>' +
+        '<div class="tab" data-tab="pending">✋ Pending Users</div>' +
+        '<div class="tab" data-tab="employees">👥 พนักงาน</div>' +
+        '<div class="tab" data-tab="leaves">📋 อนุมัติลา</div>' +
+        '<div class="tab" data-tab="performance">📈 Performance</div>' +
+      '</div>' +
+      '<div id="tabBody"></div>' +
+    '</div></div>';
+  U.$$('.tab').forEach(function (el) {
+    el.addEventListener('click', function () {
+      U.$$('.tab').forEach(function (t) { t.classList.remove('active'); });
+      el.classList.add('active');
+      loadTab(el.dataset.tab);
+    });
+  });
+}
+
+async function loadTab(name) {
+  const body = U.$('#tabBody');
+  body.innerHTML = '<div class="loading">⏳</div>';
+  try {
+    if (name === 'dashboard') await renderDashboard();
+    else if (name === 'pending') await renderPending();
+    else if (name === 'employees') await renderEmployees();
+    else if (name === 'leaves') await renderLeaves();
+    else if (name === 'performance') await renderPerformance();
+  } catch (err) { body.innerHTML = '<div class="alert alert-error">' + U.esc(err.message) + '</div>'; }
+}
+
+async function renderDashboard() {
+  const r = await apiCall('getManagerDashboard');
+  const teams = r.teams || [];
+  U.$('#tabBody').innerHTML = teams.length === 0
+    ? '<div class="card empty">ยังไม่มีทีมในสายงาน</div>'
+    : teams.map(function (t) {
+        return '<div class="card"><div style="font-weight:600;">' + U.esc(t.team) + ' (' + t.memberCount + ' คน)</div>' +
+          '<div class="stat-grid three" style="margin-top:8px;">' +
+            '<div class="stat-box"><div class="v">' + t.pending + '</div><div class="k">ค้าง</div></div>' +
+            '<div class="stat-box"><div class="v red">' + t.overdue + '</div><div class="k">เลย SLA</div></div>' +
+            '<div class="stat-box"><div class="v green">' + t.boughtToday + '</div><div class="k">ซื้อ</div></div>' +
+          '</div></div>';
+      }).join('');
+}
+
+async function renderPending() {
+  const r = await apiCall('getPendingUsers');
+  const list = r.pending || [];
+  if (list.length === 0) { U.$('#tabBody').innerHTML = '<div class="card empty">ไม่มีคำขอลงทะเบียน</div>'; return; }
+  U.$('#tabBody').innerHTML = list.map(function (p) {
+    return '<div class="card">' +
+      '<div style="display:flex;gap:10px;">' +
+        '<img class="img-preview" src="' + U.esc(p.selfieUrl) + '" alt="selfie" onerror="this.style.display=\'none\'">' +
+        '<div style="flex:1;">' +
+          '<div style="font-weight:600;">' + U.esc(p.fullName) + ' (' + U.esc(p.nickName) + ')</div>' +
+          '<div style="font-size:12px;color:var(--muted);">📱 ' + U.esc(p.phone) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);">ส่ง: ' + U.esc(p.requestedAt) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-top:10px;">' +
+        '<a href="' + U.esc(p.selfieUrl) + '" target="_blank" style="font-size:12px;color:var(--primary);">📸 ดู selfie</a> · ' +
+        '<a href="' + U.esc(p.idCardUrl) + '" target="_blank" style="font-size:12px;color:var(--primary);">🪪 ดูบัตร</a>' +
+      '</div>' +
+      '<div style="margin-top:10px;display:flex;gap:8px;">' +
+        '<button class="btn btn-success" style="flex:1;" data-action="approve" data-id="' + U.esc(p.pendingId) + '">อนุมัติ</button>' +
+        '<button class="btn btn-outline" style="flex:1;" data-action="reject" data-id="' + U.esc(p.pendingId) + '">ปฏิเสธ</button>' +
+      '</div></div>';
+  }).join('');
+  U.$$('[data-action]').forEach(function (b) {
+    b.addEventListener('click', function () { actPending(b.dataset.action, b.dataset.id); });
+  });
+}
+
+async function actPending(action, pendingId) {
+  if (action === 'approve') {
+    const data = await openApproveModal();
+    if (!data) return;
+    try {
+      await apiCall('approvePendingUser', {
+        pendingId: pendingId, decision: 'approve',
+        role: data.role, team: data.team, productSkus: data.skus,
+      });
+      U.toast('อนุมัติแล้ว');
+      renderPending();
+    } catch (e) { U.toast(e.message, true); }
+  } else {
+    const reason = await U.prompt('เหตุผลที่ไม่อนุมัติ?', { title: 'ปฏิเสธคำขอ', required: true });
+    if (!reason) return;
+    try {
+      await apiCall('approvePendingUser', { pendingId: pendingId, decision: 'reject', rejectionReason: reason });
+      U.toast('ปฏิเสธแล้ว');
+      renderPending();
+    } catch (e) { U.toast(e.message, true); }
+  }
+}
+
+function openApproveModal() {
+  return U._modal({
+    title: 'อนุมัติพนักงานใหม่',
+    body:
+      '<label style="font-size:12px;font-weight:600;">Role *</label>' +
+      '<select id="ap_role" class="select" style="margin:4px 0 10px;">' +
+        '<option value="staff">staff (พนักงานโทร)</option>' +
+        '<option value="lead">lead (หัวหน้าทีม)</option>' +
+        '<option value="manager">manager (ผู้จัดการ)</option>' +
+      '</select>' +
+      '<label style="font-size:12px;font-weight:600;">ทีม</label>' +
+      '<input id="ap_team" class="input" placeholder="เช่น ทีม A" style="margin:4px 0 10px;">' +
+      '<label style="font-size:12px;font-weight:600;">SKU ที่ดูแล (คั่นด้วย comma)</label>' +
+      '<input id="ap_skus" class="input" placeholder="SKU-001,SKU-002" style="margin:4px 0 10px;">',
+    okText: 'อนุมัติ',
+    onSubmit: function (modal) {
+      const role = modal.querySelector('#ap_role').value;
+      const team = modal.querySelector('#ap_team').value.trim();
+      const skus = modal.querySelector('#ap_skus').value
+        .split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      return { role: role, team: team, skus: skus };
+    },
+  });
+}
+
+async function renderLeaves() {
+  const r = await apiCall('getPendingLeaves');
+  const list = r.pending || [];
+  if (list.length === 0) { U.$('#tabBody').innerHTML = '<div class="card empty">ไม่มีคำขอลา</div>'; return; }
+  U.$('#tabBody').innerHTML = list.map(function (l) {
+    return '<div class="card" data-id="' + U.esc(l.leaveId) + '">' +
+      '<div style="font-weight:600;">' + U.esc(l.employeeName) + '</div>' +
+      '<div style="font-size:13px;">' + U.esc(l.startDate) + ' ถึง ' + U.esc(l.endDate) + ' (' + U.esc(l.leaveType) + ')</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin:4px 0;">"' + U.esc(l.reason || '-') + '"</div>' +
+      '<div style="display:flex;gap:8px;margin-top:8px;">' +
+        '<button class="btn btn-success approve-btn" style="flex:1;">อนุมัติ</button>' +
+        '<button class="btn btn-outline reject-btn" style="flex:1;">ปฏิเสธ</button>' +
+      '</div></div>';
+  }).join('');
+  U.$$('.card[data-id]').forEach(function (row) {
+    const id = row.dataset.id;
+    row.querySelector('.approve-btn').addEventListener('click', async function () {
+      const ok = await U.confirm('อนุมัติคำขอลา?'); if (!ok) return;
+      try { await apiCall('approveLeave', { leaveId: id, approve: true }); U.toast('อนุมัติแล้ว'); renderLeaves(); }
+      catch (e) { U.toast(e.message, true); }
+    });
+    row.querySelector('.reject-btn').addEventListener('click', async function () {
+      const reason = await U.prompt('เหตุผลที่ไม่อนุมัติ?', { required: true });
+      if (!reason) return;
+      try { await apiCall('approveLeave', { leaveId: id, approve: false, rejectionReason: reason }); U.toast('ปฏิเสธแล้ว'); renderLeaves(); }
+      catch (e) { U.toast(e.message, true); }
+    });
+  });
+}
+
+async function renderEmployees() {
+  const r = await apiCall('getAllEmployees');
+  const list = r.employees || [];
+  if (list.length === 0) { U.$('#tabBody').innerHTML = '<div class="card empty">ไม่มีพนักงานในสายงาน</div>'; return; }
+  U.$('#tabBody').innerHTML = list.map(function (e) {
+    const canBan = !e.isBanned && ['manager', 'owner'].indexOf(e.role) < 0;
+    return '<div class="card" style="' + (e.isBanned ? 'opacity:0.5;' : '') + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:start;">' +
+        '<div><div style="font-weight:600;">' + U.esc(e.displayName) + (e.isBanned ? ' 🚫 BANNED' : '') + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);">' + U.esc(e.employeeId) + ' · ' + U.esc(e.role) + ' · ' + U.esc(e.team || '-') + '</div>' +
+        (e.onLeave ? '<span class="badge">วันนี้ลา</span>' : '') + '</div>' +
+        (e.isBanned
+          ? '<span class="badge badge-overdue" style="font-size:11px;">ติดต่อ owner ปลด ban</span>'
+          : (canBan
+              ? '<button class="btn btn-danger btn-sm ban-btn" data-id="' + U.esc(e.employeeId) + '">Ban</button>'
+              : '<span style="font-size:11px;color:var(--muted);">role สูง — ban ไม่ได้</span>')) +
+      '</div></div>';
+  }).join('');
+  U.$$('.ban-btn').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      const reason = await U.prompt('ระบุเหตุผลการ Ban (อย่างน้อย 3 ตัวอักษร)\n\nหลังจาก ban: Lead pending จะถูก reassign + products จะถูกปลด + push แจ้ง user', {
+        title: 'Ban พนักงาน', multiline: true, minLen: 3,
+      });
+      if (!reason) return;
+      try {
+        const rr = await apiCall('banEmployee', { employeeId: b.dataset.id, reason: reason });
+        U.toast('Ban · reassign ' + (rr.leadsReassigned || 0) + ' leads');
+        renderEmployees();
+      } catch (e) { U.toast(e.message, true); }
+    });
+  });
+}
+
+async function renderPerformance() {
+  const r = await apiCall('getTeamPerformance', { days: 7 });
+  const stats = r.stats || [];
+  U.$('#tabBody').innerHTML = '<div class="card">' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">7 วันล่าสุด</div>' +
+    (stats.length === 0 ? '<p class="empty">ไม่มีข้อมูล</p>' :
+      stats.map(function (s) {
+        return '<div class="row" style="padding:8px 0;border-bottom:1px solid var(--border);">' +
+          '<div><div style="font-weight:600;">' + U.esc(s.displayName) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);">' + U.esc(s.team || '-') + '</div></div>' +
+          '<div style="font-size:12px;text-align:right;">' +
+            'call ' + s.calls + ' · <span style="color:var(--success);">✓ ' + s.bought + '</span>' +
+            '<br><span style="font-size:10px;color:var(--muted);">conv ' + (s.conversionRate * 100).toFixed(0) + '%</span>' +
+          '</div></div>';
+      }).join('')) +
+    '</div>';
+}
+</script>
+</body></html>

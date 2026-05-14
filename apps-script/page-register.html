@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="th"><head><base target="_top"><meta charset="UTF-8">
+<title>ลงทะเบียน — <?= brand ?></title>
+<?!= include('_styles') ?>
+</head><body>
+<div id="app">
+  <div class="app"><div class="header"><div class="brand"><?= brand ?></div><h1>กำลังเริ่มระบบ...</h1></div>
+    <div class="content"><div class="loading">⏳</div></div></div>
+</div>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<?!= include('_app') ?>
+<script>
+const FORM = { selfieB64: null, idCardB64: null };
+
+(async function () {
+  try {
+    await initLiff();
+    // check role: ถ้าลงทะเบียนแล้ว → redirect
+    try {
+      const r = await apiCall('getMyRole');
+      if (r.ok) { gotoPage('app'); return; }
+    } catch (err) {
+      if (err.code === 'pending_review') { renderPending(); return; }
+      if (err.code === 'banned') { renderBanned(err.detail); return; }
+      // not_registered → ดำเนินต่อแสดงฟอร์ม
+    }
+    renderForm();
+  } catch (err) { U.showError(err.message); }
+})();
+
+function renderForm() {
+  const lineName = AUTH.displayName || '';
+  U.$('#app').innerHTML =
+    '<div class="app"><div class="header"><div class="brand">' + U.esc(APP.brand) + '</div>' +
+    '<h1>ลงทะเบียนพนักงานใหม่</h1>' +
+    '<div class="sub">กรอกข้อมูล + ถ่ายรูปยืนยันตัวตน</div></div>' +
+    '<div class="content"><div class="card">' +
+
+    '<div class="alert alert-info" style="margin-bottom:12px;">' +
+      '<div style="font-weight:700;margin-bottom:6px;">ข้อมูลจาก LINE</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">LINE User ID</div>' +
+      '<div class="copy-id-box" style="margin:0 0 8px;">' + U.esc(AUTH.lineUserId || '-') + '</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">ชื่อ LINE / ชื่อเล่น</div>' +
+      '<input type="text" id="lineDisplayName" class="input" value="' + U.esc(lineName) + '" readonly>' +
+    '</div>' +
+
+    '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">ชื่อ-นามสกุล *</label>' +
+    '<input type="text" id="fullName" class="input" placeholder="เช่น สมศรี ใจดี" style="margin-bottom:10px;">' +
+
+    '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">ชื่อเล่น *</label>' +
+    '<input type="text" id="nickName" class="input" placeholder="ชื่อที่ให้เพื่อนเรียก" value="' + U.esc(lineName) + '" style="margin-bottom:10px;">' +
+
+    '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">เบอร์โทร *</label>' +
+    '<input type="tel" id="phone" class="input" placeholder="0xxxxxxxxx" style="margin-bottom:10px;">' +
+
+    '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px;">อีเมล</label>' +
+    '<input type="email" id="email" class="input" placeholder="optional" style="margin-bottom:14px;">' +
+
+    '<label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px;">Selfie (ถ่ายหน้าตรง) *</label>' +
+    '<label class="upload-zone" id="selfieZone">' +
+      '<input type="file" id="selfieFile" accept="image/*" capture="user">' +
+      '<div id="selfiePreview"><div style="font-size:32px;">📷</div><div style="font-size:12px;margin-top:6px;">กดเพื่อถ่าย selfie</div></div>' +
+    '</label>' +
+
+    '<label style="font-size:13px;font-weight:600;display:block;margin:14px 0 6px;">บัตรประชาชน (หน้าบัตร) *</label>' +
+    '<label class="upload-zone" id="idCardZone">' +
+      '<input type="file" id="idCardFile" accept="image/*" capture="environment">' +
+      '<div id="idCardPreview"><div style="font-size:32px;">🪪</div><div style="font-size:12px;margin-top:6px;">กดเพื่อถ่ายบัตร</div></div>' +
+    '</label>' +
+
+    '<button class="btn btn-primary btn-block" id="submitBtn" style="margin-top:16px;">ส่งคำขอลงทะเบียน</button>' +
+    '<p style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center;">ข้อมูลทั้งหมดถูกเก็บเป็นความลับ ส่งให้ admin ตรวจสอบเท่านั้น</p>' +
+    '<div id="msg" style="margin-top:10px;"></div>' +
+    '</div></div></div>';
+
+  U.$('#selfieFile').addEventListener('change', function (e) { handleFile(e.target.files[0], 'selfie'); });
+  U.$('#idCardFile').addEventListener('change', function (e) { handleFile(e.target.files[0], 'idCard'); });
+  U.$('#submitBtn').addEventListener('click', submit);
+}
+
+async function handleFile(file, type) {
+  if (!file) return;
+  try {
+    const b64 = await resizeImage(file, 1024);
+    if (type === 'selfie') {
+      FORM.selfieB64 = b64;
+      U.$('#selfiePreview').innerHTML = '<img class="img-preview" src="data:image/jpeg;base64,' + b64 + '"><div style="font-size:12px;color:var(--success);margin-top:4px;">✓ ถ่ายเรียบร้อย (กดเพื่อถ่ายใหม่)</div>';
+    } else {
+      FORM.idCardB64 = b64;
+      U.$('#idCardPreview').innerHTML = '<img class="img-preview" src="data:image/jpeg;base64,' + b64 + '"><div style="font-size:12px;color:var(--success);margin-top:4px;">✓ ถ่ายเรียบร้อย (กดเพื่อถ่ายใหม่)</div>';
+    }
+  } catch (e) { U.toast('โหลดรูปไม่สำเร็จ: ' + e.message, true); }
+}
+
+function resizeImage(file, maxDim) {
+  return new Promise(function (resolve, reject) {
+    const img = new Image();
+    img.onload = function () {
+      let w = img.width, h = img.height;
+      if (w > h) { if (w > maxDim) { h *= maxDim / w; w = maxDim; } }
+      else { if (h > maxDim) { w *= maxDim / h; h = maxDim; } }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(c.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function submit() {
+  const fullName = U.$('#fullName').value.trim();
+  const nickName = U.$('#nickName').value.trim();
+  const phone = U.$('#phone').value.trim();
+  const email = U.$('#email').value.trim();
+
+  if (!AUTH.lineUserId) return U.toast('ไม่พบ LINE User ID', true);
+  if (!fullName) return U.toast('กรอกชื่อ-นามสกุล', true);
+  if (!nickName) return U.toast('กรอกชื่อเล่น', true);
+  if (!phone) return U.toast('กรอกเบอร์โทร', true);
+  if (!FORM.selfieB64) return U.toast('ถ่าย selfie', true);
+  if (!FORM.idCardB64) return U.toast('ถ่ายบัตรประชาชน', true);
+
+  const btn = U.$('#submitBtn');
+  btn.disabled = true; btn.textContent = 'กำลังส่ง...';
+  U.$('#msg').innerHTML = '<div class="alert alert-info">⏳ กำลังอัปโหลดรูปและส่งคำขอ...</div>';
+
+  try {
+    await apiCall('registerUser', {
+      lineDisplayName: AUTH.displayName,
+      fullName: fullName, nickName: nickName, phone: phone, email: email,
+      selfieBase64: FORM.selfieB64, idCardBase64: FORM.idCardB64,
+    });
+    U.$('#msg').innerHTML = '<div class="alert alert-success">✅ ส่งคำขอสำเร็จ — รอ admin อนุมัติ ระบบจะส่ง LINE แจ้งคุณ</div>';
+    btn.style.display = 'none';
+  } catch (err) {
+    btn.disabled = false; btn.textContent = 'ส่งคำขอลงทะเบียน';
+    U.$('#msg').innerHTML = '<div class="alert alert-error">❌ ' + U.esc(err.message) + '</div>';
+  }
+}
+</script>
+</body></html>

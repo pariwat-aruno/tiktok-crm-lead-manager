@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="th"><head><base target="_top"><meta charset="UTF-8">
+<title>Owner — <?= brand ?></title>
+<?!= include('_styles') ?>
+</head><body>
+<div id="app"><div class="app"><div class="header"><div class="brand"><?= brand ?></div><h1>เข้าระบบ...</h1></div><div class="content"><div class="loading">⏳</div></div></div></div>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<?!= include('_app') ?>
+<script>
+(async function () {
+  const r = await bootApp();
+  if (!r) return;
+  if (r.role !== 'owner') { renderWrongRole('owner'); return; }
+  renderShell();
+  loadTab('dashboard');
+})();
+
+function renderShell() {
+  U.$('#app').innerHTML = '<div class="app">' +
+    '<div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>Owner</h1>' +
+    '<div class="sub">' + U.esc(AUTH.name || '') + ' · <a href="' + pageUrl('leave') + '" style="color:#fff;text-decoration:underline;">ขอลา</a></div></div>' +
+    '<div class="content">' +
+      '<div class="tabs">' +
+        '<div class="tab active" data-tab="dashboard">📊</div>' +
+        '<div class="tab" data-tab="pending">✋ Pending</div>' +
+        '<div class="tab" data-tab="employees">👥 พนักงาน</div>' +
+        '<div class="tab" data-tab="products">🛍 สินค้า</div>' +
+        '<div class="tab" data-tab="customers">🔎 ลูกค้า</div>' +
+        '<div class="tab" data-tab="upload">📥 Upload CSV</div>' +
+        '<div class="tab" data-tab="sessions">📋 Sessions</div>' +
+        '<div class="tab" data-tab="audit">🔍 Audit</div>' +
+      '</div>' +
+      '<div id="tabBody"></div>' +
+    '</div></div>';
+  U.$$('.tab').forEach(function (el) {
+    el.addEventListener('click', function () {
+      U.$$('.tab').forEach(function (t) { t.classList.remove('active'); });
+      el.classList.add('active');
+      loadTab(el.dataset.tab);
+    });
+  });
+}
+
+async function loadTab(name) {
+  const body = U.$('#tabBody');
+  body.innerHTML = '<div class="loading">⏳</div>';
+  try {
+    if (name === 'dashboard') await renderDashboard();
+    else if (name === 'pending') await renderPending();
+    else if (name === 'employees') await renderEmployees();
+    else if (name === 'products') await renderProducts();
+    else if (name === 'customers') renderCustomers();
+    else if (name === 'upload') renderUpload();
+    else if (name === 'sessions') await renderSessions();
+    else if (name === 'audit') await renderAudit();
+  } catch (err) { body.innerHTML = '<div class="alert alert-error">' + U.esc(err.message) + '</div>'; }
+}
+
+async function renderDashboard() {
+  const r = await apiCall('getOwnerDashboard');
+  const s = r.summary || {};
+  const st = s.stages || {};
+  U.$('#tabBody').innerHTML =
+    '<div class="card"><div class="stat-grid">' +
+      '<div class="stat-box"><div class="v">' + (s.pendingLeads || 0) + '</div><div class="k">ค้างคิว</div></div>' +
+      '<div class="stat-box"><div class="v red">' + (s.overdueLeads || 0) + '</div><div class="k">เลย SLA</div></div>' +
+      '<div class="stat-box"><div class="v">' + (s.todayCalls || 0) + '</div><div class="k">โทรวันนี้</div></div>' +
+      '<div class="stat-box"><div class="v green">' + (s.todayBought || 0) + '</div><div class="k">ซื้อวันนี้</div></div>' +
+    '</div></div>' +
+    '<div class="card"><h3 style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;">ลูกค้า (' + (s.totalCustomers || 0) + ')</h3>' +
+    '<div class="stat-grid"><div class="stat-box"><div class="v">' + (st.NEW || 0) + '</div><div class="k">NEW</div></div>' +
+    '<div class="stat-box"><div class="v green">' + (st.ACTIVE || 0) + '</div><div class="k">ACTIVE</div></div>' +
+    '<div class="stat-box"><div class="v">' + (st.DORMANT || 0) + '</div><div class="k">DORMANT</div></div>' +
+    '<div class="stat-box"><div class="v">' + (st.CHURNED || 0) + '</div><div class="k">CHURNED</div></div></div></div>' +
+    '<div class="card"><h3 style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;">อื่นๆ</h3>' +
+    '<div class="row"><span class="k">พนักงาน active</span><span>' + (s.activeEmployees || 0) + '</span></div>' +
+    '<div class="row"><span class="k">รออนุมัติลงทะเบียน</span><span>' + (s.pendingUsers || 0) + '</span></div>' +
+    '<div class="row"><span class="k">Blacklist requests</span><span>' + (s.blacklistReq || 0) + '</span></div>' +
+    '<div class="row"><span class="k">Blacklisted customers</span><span>' + (s.blacklistedCustomers || 0) + '</span></div>' +
+    '</div>';
+}
+
+async function renderPending() {
+  const r = await apiCall('getPendingUsers');
+  const list = r.pending || [];
+  if (list.length === 0) { U.$('#tabBody').innerHTML = '<div class="card empty">ไม่มีคำขอ</div>'; return; }
+  U.$('#tabBody').innerHTML = list.map(function (p) {
+    return '<div class="card">' +
+      '<div style="display:flex;gap:10px;">' +
+        '<img class="img-preview" src="' + U.esc(p.selfieUrl) + '" alt="selfie" onerror="this.style.display=\'none\'">' +
+        '<div style="flex:1;">' +
+          '<div style="font-weight:600;">' + U.esc(p.fullName) + ' (' + U.esc(p.nickName) + ')</div>' +
+          '<div style="font-size:12px;color:var(--muted);">📱 ' + U.esc(p.phone) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);">' + U.esc(p.requestedAt) + '</div>' +
+        '</div></div>' +
+      '<div style="margin-top:8px;font-size:12px;">' +
+        '<a href="' + U.esc(p.selfieUrl) + '" target="_blank" style="color:var(--primary);">📸 Selfie</a> · ' +
+        '<a href="' + U.esc(p.idCardUrl) + '" target="_blank" style="color:var(--primary);">🪪 บัตร</a>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:10px;">' +
+        '<button class="btn btn-success" data-act="approve" data-id="' + U.esc(p.pendingId) + '" style="flex:1;">อนุมัติ</button>' +
+        '<button class="btn btn-outline" data-act="reject" data-id="' + U.esc(p.pendingId) + '" style="flex:1;">ปฏิเสธ</button>' +
+      '</div></div>';
+  }).join('');
+  U.$$('[data-act]').forEach(function (b) {
+    b.addEventListener('click', function () { actPending(b.dataset.act, b.dataset.id); });
+  });
+}
+
+async function actPending(action, pendingId) {
+  if (action === 'approve') {
+    const data = await openApproveModal();
+    if (!data) return;
+    try {
+      await apiCall('approvePendingUser', {
+        pendingId: pendingId, decision: 'approve',
+        role: data.role, team: data.team, productSkus: data.skus,
+      });
+      U.toast('อนุมัติแล้ว'); renderPending();
+    } catch (e) { U.toast(e.message, true); }
+  } else {
+    const reason = await U.prompt('เหตุผลที่ไม่อนุมัติ?', { title: 'ปฏิเสธคำขอ', required: true });
+    if (!reason) return;
+    try { await apiCall('approvePendingUser', { pendingId: pendingId, decision: 'reject', rejectionReason: reason }); U.toast('ปฏิเสธแล้ว'); renderPending(); }
+    catch (e) { U.toast(e.message, true); }
+  }
+}
+
+function openApproveModal() {
+  return U._modal({
+    title: 'อนุมัติพนักงานใหม่',
+    body:
+      '<label style="font-size:12px;font-weight:600;">Role *</label>' +
+      '<select id="ap_role" class="select" style="margin:4px 0 10px;">' +
+        '<option value="staff">staff (พนักงานโทร)</option>' +
+        '<option value="lead">lead (หัวหน้าทีม)</option>' +
+        '<option value="manager">manager (ผู้จัดการ)</option>' +
+      '</select>' +
+      '<label style="font-size:12px;font-weight:600;">ทีม</label>' +
+      '<input id="ap_team" class="input" placeholder="เช่น ทีม A" style="margin:4px 0 10px;">' +
+      '<label style="font-size:12px;font-weight:600;">SKU ที่ดูแล (คั่นด้วย comma)</label>' +
+      '<input id="ap_skus" class="input" placeholder="SKU-001,SKU-002" style="margin:4px 0 10px;">',
+    okText: 'อนุมัติ',
+    onSubmit: function (modal) {
+      const role = modal.querySelector('#ap_role').value;
+      const team = modal.querySelector('#ap_team').value.trim();
+      const skus = modal.querySelector('#ap_skus').value
+        .split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      return { role: role, team: team, skus: skus };
+    },
+  });
+}
+
+async function renderEmployees() {
+  const r = await apiCall('getAllEmployees');
+  const list = r.employees || [];
+  U.$('#tabBody').innerHTML = list.map(function (e) {
+    return '<div class="card" style="' + (e.isBanned ? 'opacity:0.5;' : '') + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:start;">' +
+        '<div><div style="font-weight:600;">' + U.esc(e.displayName) + (e.isBanned ? ' 🚫 BANNED' : '') + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);">' + U.esc(e.employeeId) + ' · ' + U.esc(e.role) + ' · ' + U.esc(e.team || '-') + '</div>' +
+        (e.onLeave ? '<span class="badge">วันนี้ลา</span>' : '') + '</div>' +
+        (e.isBanned
+          ? '<button class="btn btn-outline btn-sm unban-btn" data-id="' + U.esc(e.employeeId) + '">ปลด ban</button>'
+          : '<button class="btn btn-danger btn-sm ban-btn" data-id="' + U.esc(e.employeeId) + '">Ban</button>') +
+      '</div></div>';
+  }).join('');
+  U.$$('.ban-btn').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      const reason = await U.prompt('ระบุเหตุผลการ Ban (อย่างน้อย 3 ตัวอักษร)\n\nหลังจาก ban: Lead pending จะถูก reassign + products จะถูกปลด + push แจ้ง user', {
+        title: 'Ban พนักงาน', multiline: true, minLen: 3,
+      });
+      if (!reason) return;
+      try {
+        const rr = await apiCall('banEmployee', { employeeId: b.dataset.id, reason: reason });
+        U.toast('Ban · reassign ' + (rr.leadsReassigned || 0) + ' leads');
+        renderEmployees();
+      } catch (e) { U.toast(e.message, true); }
+    });
+  });
+  U.$$('.unban-btn').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      const ok = await U.confirm('ปลดการ ban พนักงานคนนี้?');
+      if (!ok) return;
+      try { await apiCall('unbanEmployee', { employeeId: b.dataset.id }); U.toast('ปลดแล้ว'); renderEmployees(); }
+      catch (e) { U.toast(e.message, true); }
+    });
+  });
+}
+
+async function renderProducts() {
+  const [pr, er] = await Promise.all([
+    apiCall('getProductTeam'),
+    apiCall('getAllEmployees'),
+  ]);
+  const products = pr.products || [];
+  const employees = (er.employees || []).filter(function (e) { return e.isActive && !e.isBanned; });
+
+  // fetch team สำหรับแต่ละ product (parallel)
+  const teams = await Promise.all(products.map(function (p) {
+    return apiCall('getProductTeam', { sku: p.sku }).then(function (r) { return r.team || []; }).catch(function () { return []; });
+  }));
+
+  let html = '<div class="card"><h3 style="font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">เพิ่ม Product</h3>' +
+    '<input id="psku" class="input" placeholder="SKU" style="margin-bottom:8px;">' +
+    '<input id="pname" class="input" placeholder="ชื่อสินค้า" style="margin-bottom:8px;">' +
+    '<input id="prebuy" class="input" type="number" placeholder="รอบโทรซ้ำ (วัน) เช่น 30" style="margin-bottom:8px;">' +
+    '<textarea id="pscript" class="textarea" placeholder="สคริปต์ ใช้ {name}, {product}, {last_order_date}"></textarea>' +
+    '<button class="btn btn-primary btn-block" id="addProd" style="margin-top:10px;">เพิ่ม</button>' +
+    '</div>';
+
+  if (products.length === 0) {
+    html += '<div class="card empty">ยังไม่มี product</div>';
+  }
+
+  products.forEach(function (p, i) {
+    const team = teams[i] || [];
+    html += '<div class="card" data-sku="' + U.esc(p.sku) + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:start;">' +
+        '<div><div style="font-weight:600;">' + U.esc(p.sku) + ' — ' + U.esc(p.product_name || '') + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);">รอบโทรซ้ำ ' + (p.rebuy_days || 30) + ' วัน</div></div>' +
+        '<button class="btn btn-outline btn-sm assign-btn" data-sku="' + U.esc(p.sku) + '">+ ผูกพนักงาน</button>' +
+      '</div>' +
+      '<div style="margin-top:10px;font-size:12px;color:var(--muted);">ผู้ดูแล (' + team.length + ')</div>' +
+      (team.length === 0
+        ? '<div style="font-size:12px;color:var(--muted);padding:6px 0;font-style:italic;">ยังไม่มีใครดูแล</div>'
+        : team.map(function (t) {
+            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">' +
+              '<div style="font-size:13px;">' + U.esc(t.displayName) +
+                (t.onLeave ? ' <span class="badge">ลา</span>' : '') +
+                (!t.isActive ? ' <span class="badge badge-overdue">inactive</span>' : '') +
+              '</div>' +
+              '<button class="btn btn-outline btn-sm unassign-btn" data-sku="' + U.esc(p.sku) + '" data-emp="' + U.esc(t.employeeId) + '">ปลด</button>' +
+            '</div>';
+          }).join('')) +
+      '</div>';
+  });
+
+  U.$('#tabBody').innerHTML = html;
+  U.$('#addProd').addEventListener('click', async function () {
+    const sku = U.$('#psku').value.trim();
+    if (!sku) return U.toast('กรอก SKU', true);
+    try {
+      await apiCall('createProduct', {
+        sku: sku,
+        productName: U.$('#pname').value.trim(),
+        rebuyDays: Number(U.$('#prebuy').value) || 30,
+        scriptText: U.$('#pscript').value,
+      });
+      U.toast('เพิ่มแล้ว'); renderProducts();
+    } catch (e) { U.toast(e.message, true); }
+  });
+
+  U.$$('.assign-btn').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      const sku = b.dataset.sku;
+      const candidates = employees.filter(function (e) { return e.role !== 'owner'; });
+      if (candidates.length === 0) return U.toast('ยังไม่มีพนักงาน', true);
+      const empId = await U.select('เลือกพนักงานที่จะให้ดูแล SKU: ' + sku, {
+        title: 'ผูกพนักงาน',
+        options: candidates.map(function (e) {
+          return {
+            value: e.employeeId,
+            label: e.displayName + ' (' + e.role + ')',
+            description: e.team || 'ไม่มีทีม',
+          };
+        }),
+      });
+      if (!empId) return;
+      try {
+        await apiCall('assignProduct', { employeeId: empId, sku: sku });
+        U.toast('ผูกแล้ว'); renderProducts();
+      } catch (e) { U.toast(e.message, true); }
+    });
+  });
+
+  U.$$('.unassign-btn').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      const ok = await U.confirm('ปลดพนักงานคนนี้ออกจาก SKU?', { danger: true, okText: 'ปลด' });
+      if (!ok) return;
+      try {
+        await apiCall('unassignProduct', { employeeId: b.dataset.emp, sku: b.dataset.sku });
+        U.toast('ปลดแล้ว'); renderProducts();
+      } catch (e) { U.toast(e.message, true); }
+    });
+  });
+}
+
+function renderCustomers() {
+  U.$('#tabBody').innerHTML = '<div class="card">' +
+    '<input id="custQ" class="input" placeholder="ค้นหาด้วยชื่อหรือเบอร์โทร (≥2 ตัวอักษร)" style="margin-bottom:8px;">' +
+    '<button class="btn btn-primary btn-block" id="custSearch">ค้นหา</button>' +
+    '</div>' +
+    '<div id="custResult"></div>' +
+    '<div id="mergeBar" style="display:none;position:sticky;bottom:0;background:#fff;padding:10px;border-top:1px solid var(--border);"></div>';
+
+  U.$('#custSearch').addEventListener('click', doCustSearch);
+  U.$('#custQ').addEventListener('keydown', function (e) { if (e.key === 'Enter') doCustSearch(); });
+}
+
+let CUST_RESULTS = [];
+async function doCustSearch() {
+  const q = U.$('#custQ').value.trim();
+  if (q.length < 2) return U.toast('พิมพ์อย่างน้อย 2 ตัวอักษร', true);
+  U.$('#custResult').innerHTML = '<div class="loading">⏳</div>';
+  try {
+    const r = await apiCall('searchCustomers', { q: q });
+    CUST_RESULTS = r.customers || [];
+    renderCustList();
+  } catch (e) { U.$('#custResult').innerHTML = '<div class="alert alert-error">' + U.esc(e.message) + '</div>'; }
+}
+
+function renderCustList() {
+  const list = CUST_RESULTS;
+  if (list.length === 0) { U.$('#custResult').innerHTML = '<div class="card empty">ไม่พบลูกค้า</div>'; return; }
+  U.$('#custResult').innerHTML = '<div class="card" style="padding:0;">' +
+    list.map(function (c) {
+      return '<label style="display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--border);align-items:start;">' +
+        '<input type="checkbox" class="cust-cb" value="' + U.esc(c.customer_id) + '" style="margin-top:4px;">' +
+        '<div style="flex:1;">' +
+          '<div style="font-weight:600;">' + U.esc(c.name) +
+            (c.blacklist ? ' <span class="badge badge-overdue">BL</span>' : '') +
+            ' <span class="badge badge-info">' + U.esc(c.stage || '-') + '</span></div>' +
+          '<div style="font-size:11px;color:var(--muted);">' + U.esc(c.customer_id) + ' · 📱 ' + U.esc(c.phone || '-') + '</div>' +
+          (c.owner_employee_id ? '<div style="font-size:11px;color:var(--muted);">owner: ' + U.esc(c.owner_employee_id) + '</div>' : '') +
+        '</div>' +
+      '</label>';
+    }).join('') + '</div>';
+
+  U.$$('.cust-cb').forEach(function (cb) {
+    cb.addEventListener('change', updateMergeBar);
+  });
+}
+
+function updateMergeBar() {
+  const checked = U.$$('.cust-cb').filter(function (cb) { return cb.checked; });
+  const bar = U.$('#mergeBar');
+  if (checked.length < 2) { bar.style.display = 'none'; return; }
+  bar.style.display = 'block';
+  bar.innerHTML = '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">เลือก ' + checked.length + ' ราย</div>' +
+    '<button class="btn btn-danger btn-block" id="mergeBtn">รวมเป็นลูกค้าเดียว</button>';
+  U.$('#mergeBtn').addEventListener('click', doMerge);
+}
+
+async function doMerge() {
+  const ids = U.$$('.cust-cb').filter(function (cb) { return cb.checked; }).map(function (cb) { return cb.value; });
+  if (ids.length < 2) return;
+  const masterId = await U.select('เลือกลูกค้าหลัก (อีก ' + (ids.length - 1) + ' ราย จะถูกรวมเข้ามา)', {
+    title: 'รวมลูกค้า',
+    options: ids.map(function (id) {
+      const c = CUST_RESULTS.find(function (x) { return x.customer_id === id; }) || {};
+      return { value: id, label: c.name + ' (' + id + ')', description: '📱 ' + (c.phone || '-') };
+    }),
+  });
+  if (!masterId) return;
+  const mergeIds = ids.filter(function (i) { return i !== masterId; });
+  const ok = await U.confirm('Orders / Leads / CallLogs ของ ' + mergeIds.length + ' รายจะย้ายไปที่ master\nลูกค้าเดิมจะถูกลบ\nดำเนินการต่อ?', {
+    danger: true, okText: 'รวม',
+  });
+  if (!ok) return;
+  try {
+    const r = await apiCall('mergeCustomers', { masterId: masterId, mergeIds: mergeIds });
+    U.toast('รวม ' + r.customersDeleted + ' ราย · ' + r.ordersMoved + ' orders');
+    doCustSearch();
+  } catch (e) { U.toast(e.message, true); }
+}
+
+function renderUpload() {
+  U.$('#tabBody').innerHTML = '<div class="card">' +
+    '<p style="font-size:13px;color:var(--muted);margin-bottom:12px;">อัปโหลด CSV ออเดอร์จาก TikTok Shop</p>' +
+    '<label class="upload-zone"><input type="file" id="csv" accept=".csv">' +
+      '<div style="font-size:40px;">📥</div><div>เลือก CSV</div></label>' +
+    '<div id="up_msg" style="margin-top:12px;"></div></div>';
+  U.$('#csv').addEventListener('change', async function (e) {
+    const f = e.target.files[0]; if (!f) return;
+    U.$('#up_msg').innerHTML = '<div class="alert alert-info">⏳ กำลังอ่าน...</div>';
+    const reader = new FileReader();
+    reader.onload = async function (ev) {
+      try {
+        const b64 = btoa(unescape(encodeURIComponent(ev.target.result)));
+        U.$('#up_msg').innerHTML = '<div class="alert alert-warn">⏳ Import...</div>';
+        const r = await apiCall('importCsv', { csvBase64: b64, filename: f.name });
+        const sm = r.summary || {};
+        U.$('#up_msg').innerHTML = '<div class="alert alert-success">✅ ' + sm.customersCreated + ' ลูกค้า · ' + sm.ordersCreated + ' orders · ' + sm.leadsCreated + ' leads</div>';
+      } catch (err) {
+        U.$('#up_msg').innerHTML = '<div class="alert alert-error">❌ ' + U.esc(err.message) + '</div>';
+      }
+    };
+    reader.readAsText(f, 'UTF-8');
+  });
+}
+
+async function renderSessions() {
+  const r = await apiCall('getRecentSessions');
+  const list = r.sessions || [];
+  if (list.length === 0) { U.$('#tabBody').innerHTML = '<div class="card empty">ยังไม่มี session</div>'; return; }
+  U.$('#tabBody').innerHTML = list.map(function (s) {
+    return '<div class="card">' +
+      '<div style="font-family:monospace;font-size:11px;color:var(--muted);">' + U.esc(s.sessionId) + '</div>' +
+      '<div style="font-weight:600;">' + U.esc(s.filename || '-') + '</div>' +
+      '<div style="font-size:12px;color:var(--muted);">' + s.ordersCreated + ' orders · ' + s.leadsCreated + ' leads · ' + s.ageHours + ' ชม.</div>' +
+      (s.canRollback ? '<button class="btn btn-outline btn-sm rb" data-id="' + U.esc(s.sessionId) + '" style="margin-top:6px;">↩ Rollback</button>' : '') +
+      '</div>';
+  }).join('');
+  U.$$('.rb').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      const ok = await U.confirm('Rollback session นี้?\nจะลบ Orders + Leads ที่สร้างจากการ import ครั้งนี้ทั้งหมด', {
+        danger: true, okText: 'Rollback',
+      });
+      if (!ok) return;
+      try {
+        const r = await apiCall('rollbackSession', { sessionId: b.dataset.id });
+        U.toast('ลบ ' + r.deletedOrders + ' orders, ' + r.deletedLeads + ' leads');
+        renderSessions();
+      } catch (e) { U.toast(e.message, true); }
+    });
+  });
+}
+
+async function renderAudit() {
+  const r = await apiCall('getFullAuditLog', { limit: 100 });
+  const logs = r.logs || [];
+  U.$('#tabBody').innerHTML = '<div class="card">' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + logs.length + ' รายการล่าสุด</div>' +
+    logs.map(function (l) {
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">' +
+        '<div><b>' + U.esc(l.action) + '</b> · ' + U.esc(l.actor_employee_id) + ' (' + U.esc(l.actor_role) + ')</div>' +
+        '<div style="color:var(--muted);font-size:11px;">' + U.esc(l.target_type) + ':' + U.esc(l.target_id) + ' · ' + U.esc(l.timestamp) + '</div>' +
+      '</div>';
+    }).join('') +
+    '</div>';
+}
+</script>
+</body></html>
