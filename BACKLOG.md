@@ -9,65 +9,79 @@
 | Project root | `~/Downloads/tiktok-crm-lead-manager/` |
 | Apps Script Editor | https://script.google.com/d/1smslW-lmyaZ-TEJ0pTfu7xIPT9aEAHtYx-Bs3BndYQDFnQKrWFZQZxUe/edit |
 | Deployment ID | `AKfycbyIffdlua-m7zW4iqfW81EbIVljPrW31I-OCGveSS1biImW-UpkywwslPf0LJAH2vKoWQ` |
-| Web App URL | `https://script.google.com/macros/s/<deploymentId>/exec` |
+| Apps Script Web App | `https://script.google.com/macros/s/<deploymentId>/exec` |
 | Sheet | https://docs.google.com/spreadsheets/d/1jsU2hFTmDIZfx9CG6e1dmYU7O15sOVKT4IDkGwrn724/edit |
 | LIFF ID | `2010082378-Dyr6fRBQ` |
+| **LIFF Endpoint URL** | `https://pariwat-aruno.github.io/tiktok-crm-lead-manager/` (GitHub Pages root) |
 | Owner LINE ID | `Ub47d6b519be013dbe6e83c4fbd079c56` (พี่ปุ้ย) |
 | GitHub repo | https://github.com/pariwat-aruno/tiktok-crm-lead-manager |
-| GitHub Pages | https://pariwat-aruno.github.io/tiktok-crm-lead-manager/ (`gh-pages` branch) |
+| GitHub Pages | https://pariwat-aruno.github.io/tiktok-crm-lead-manager/ (`gh-pages` branch root) |
 | Apps Script deploy | `@16` |
 
-### Deploy command (ทุกครั้งที่แก้ apps-script/)
+### Deploy: แก้ apps-script/
 ```bash
 cd ~/Downloads/tiktok-crm-lead-manager
 ~/.npm-global/bin/clasp push -f
 ~/.npm-global/bin/clasp deploy --deploymentId AKfycbyIffdlua-m7zW4iqfW81EbIVljPrW31I-OCGveSS1biImW-UpkywwslPf0LJAH2vKoWQ
 ```
 
-### Build frontend (ทุกครั้งที่แก้ HTML ใน apps-script/)
+### Deploy: แก้ HTML frontend
 ```bash
-node tools/build-frontend.js   # generate frontend/*.html จาก apps-script/*.html
+node tools/build-frontend.js          # gen frontend/*.html จาก apps-script/*.html
+git add tools frontend && git commit && git push origin main
+# แล้ว sync ขึ้น gh-pages:
+git checkout gh-pages
+git checkout main -- frontend
+cp -f frontend/.nojekyll frontend/README.md frontend/*.html .
+git rm -r --cached frontend; rm -rf frontend
+git add -A && git commit && git push origin gh-pages
+git checkout main
 ```
+> ⚠ git ops ที่ใช้เวลา — รันแบบ background (`run_in_background`) เพราะถ้า user พิมพ์ระหว่างรัน harness จะ cancel command
 
-## สถาปัตยกรรม (สรุป)
+## สถาปัตยกรรม
 
-ระบบรองรับ **2 mode** ในโค้ดเดียวกัน:
-1. **Apps Script-only** — LIFF Endpoint = Apps Script `/exec?page=app`, `apiCall` ใช้ `google.script.run.apiRoute()` (เลี่ยง POST redirect)
-2. **GitHub Pages** — LIFF Endpoint = GitHub Pages root, `frontend/*.html` เป็น static, API ยิง Apps Script `/exec` ผ่าน `fetch`
+**Mode หลักที่ใช้งานจริง = GitHub Pages** (พิสูจน์แล้วว่าทำงาน):
+```
+LINE app → liff.line.me/<LIFF_ID>/app
+  → GitHub Pages index.html → โหลด LIFF SDK → liff.init() → route → app.html
+  → app.html → bootApp → initLiff (เห็น logged in แล้ว) → apiCall (fetch POST → Apps Script /exec)
+  → Owner Dashboard
+```
+- frontend = static HTML บน GitHub Pages (`gh-pages` branch) — domain คงที่ ไม่ redirect → `liff.init()` ทำงาน
+- backend = Apps Script Web App — `apiCall` ยิง `fetch POST` ไป `/exec` ได้ JSON กลับ (CORS `*` + ไม่ติด 405)
+- `_app.html` มี dual-mode: ถ้า `APP.frontendBase` มี → GitHub Pages mode, ถ้าไม่มี → Apps Script-only mode (google.script.run + manual identity) — ตอนนี้ใช้ GitHub Pages เป็นหลัก
 
-ตัว `_app.html` ตรวจ `APP.frontendBase`: ถ้ามี → mode 2, ถ้าไม่มี → mode 1
+## ✅ เสร็จ + ทดสอบผ่านแล้ว
 
-## ✅ เสร็จแล้ว
+- Code — audit + แก้ bug 12 จุด + RichMenuImage (Sarabun font)
+- Apps Script deploy `@16` + LIFF_ID + LINE token + owner
+- **LIFF เปิดได้** — ไม่ค้าง ไม่ redirect loop ไม่จอเล็ก
+- **Owner เปิด → เข้า Owner Dashboard ได้**
+- **User ใหม่ → route ไปหน้า register** + แสดง LINE User ID
+- **`apiCall` (fetch POST → Apps Script) ทำงาน** — owner dashboard โหลดข้อมูลได้
+- bug ที่แก้ระหว่าง deploy:
+  - `build-frontend.js` `$$`→`$` (replacement string) → ใช้ replacement function
+  - `index.html` redirect loop — redirect ก่อน `liff.init()` + ทิ้ง params → แก้: `liff.init()` ก่อน route + forward params ทั้งหมด
+  - viewport meta หาย ใน static build → เพิ่มใน `build-frontend.js`
+- ลบ `cloudflare/` (legacy worker proxy — เลิกใช้)
 
-- Code 37 ไฟล์ — audit + แก้ bug 12 จุด (mergeCustomers, dailyReport.revenue, role validation, notify dedup, product assign UI, search customers tab, manager ban tab, leave links, prompt→modal, Thai error mapping, date min)
-- Apps Script project + deploy `@16`
-- ติดตั้ง clasp ที่ `~/.npm-global/bin/clasp`
-- ตั้ง LIFF_ID + LINE_CHANNEL_ACCESS_TOKEN
-- เพิ่ม owner (พี่ปุ้ย)
-- Rich menu image (PIL + Sarabun font) ฝัง base64 ใน `RichMenuImage.gs` → `setupRichMenuPrebuilt()`
-- **แก้ปัญหาหน้าขาว/liff.init ค้าง** — เปลี่ยน `apiCall` มาใช้ `google.script.run` (Apps Script-only mode) + `_manualIdentity()` fallback ถ้า LIFF ไม่พร้อม
-- เตรียม GitHub Pages: `frontend/` + `tools/build-frontend.js` + `docs/github-pages-frontend.md`
-- **แก้ build-frontend.js bug** (2026-05-14) — replacement string ที่มี `$$` (จาก `U.$$`) ถูก String.replace ตีความเป็น literal `$` → `U.$$` กลายเป็น `U.$` ใน `frontend/*.html` → 5 หน้า crash. แก้: ใช้ replacement function ทุก `.replace()` + re-build แล้ว
+## ⏳ เหลือทดสอบ flow เต็ม
 
-## 🟡 ต้องทดสอบจริง — ยังไม่ฟันธง
+- [ ] tab สินค้า — createProduct + assignProduct UI
+- [ ] tab Upload CSV — importCsv
+- [ ] tab Pending — approvePendingUser (มี `U18177490...` ค้าง register ไว้ทดสอบได้)
+- [ ] หน้า ขอลา — requestLeave
+- [ ] tab สร้าง Rich Menu — `setupRichMenuFromBase64` (base64 canvas ~50-200KB ผ่าน fetch POST — ยังไม่ทดสอบ)
+- [ ] `setupRichMenuPrebuilt()` — รันใน Apps Script Editor ตั้ง rich menu (Sarabun font image)
 
-1. **`frontend/` (GitHub Pages) mode — apiCall จะใช้ได้ไหม**
-   - GitHub Pages ไม่มี `google.script.run` → `apiCall` ตก fallback `fetch POST` ไป Apps Script `/exec`
-   - POST → 302 redirect → `script.googleusercontent.com` — ยังไม่ชัดว่า follow redirect แล้วได้ JSON หรือ 405
-   - `curl -L` POST เคยได้ JSON ok แต่ webhook POST เคยได้ 405 — ต้องทดสอบ `fetch` จาก browser จริง
-   - ถ้า 405 → `frontend/` mode apiCall พังทั้งหมด → ต้องใช้ Apps Script-only mode เท่านั้น
-2. **`google.script.run` + base64 ใหญ่** — `registerUser` (selfie+idcard) และ `setupRichMenuFromBase64` ส่ง base64 ~100-300KB — ควรทดสอบ payload limit
-3. **Apps Script-only mode — liff.init ใน LINE webview** — ยังไม่ confirm ว่า `liff.init()` ทำงานเมื่อ endpoint = Apps Script `/exec` (domain redirect). ถ้าไม่ → ระบบ fallback `_manualIdentity()` (กรอก LINE User ID เอง) — ใช้งานได้แต่ UX ด้อยกว่า
+## 🟢 ข้อจำกัด / ตัดสินใจภายหลัง
 
-## 🟢 เก็บกวาด / ตัดสินใจ
+- **webhook OA (`id`/`help`)** — POST ตรงเข้า Apps Script ได้ 302→405 → คำสั่งใน OA ใช้ไม่ได้ ต้องมี relay (Cloudflare Worker) ถึงจะเปิดได้ — **ปิดฟีเจอร์นี้ไว้ก่อน** (user หาตัวเองด้วยหน้า register ที่แสดง LINE User ID + `_manualIdentity` fallback)
+- **Apps Script-only mode** ยังอยู่ในโค้ด (`_app.html` dual-mode) — เผื่อ fallback แต่ไม่ได้ใช้เป็นหลัก — จะตัดออกหรือเก็บไว้ก็ได้
 
-- **เลือก mode หลัก** — Apps Script-only หรือ GitHub Pages — ตอนนี้มี 2 mode ในโค้ด ทำให้ test/maintain งง ควรเลือกอันเดียว
-- `cloudflare/worker.js` + `cloudflare/*.png` — legacy (เคยลองใช้ Worker proxy) ไม่ใช้แล้ว — ลบหรือย้ายไป archive
-- webhook (`id`/`help` ใน OA) — POST ตรงเข้า Apps Script ได้ 302→405 — ถ้าจะให้คำสั่ง OA ใช้ได้ ต้องมี relay (Cloudflare Worker) — ตอนนี้ปิดฟีเจอร์นี้ไว้ก่อน
+## Next session
 
-## Next session — เริ่มจากตรงนี้
-
-1. ถามพี่ปุ้ยว่าเลือก mode ไหน (Apps Script-only vs GitHub Pages)
-2. ทดสอบ apiCall ของ mode ที่เลือกให้ผ่านจริง (ดู §🟡)
-3. ถ้าผ่าน → ทดสอบ flow เต็ม: เปิดแอพ → สร้าง product → import CSV → approve user → ขอลา → rich menu
-4. เก็บกวาด cloudflare/ + ตัด mode ที่ไม่ใช้
+1. ทดสอบ flow เต็ม (ดู ⏳) — ถ้าติดตรงไหนค่อย debug
+2. รัน `setupRichMenuPrebuilt()` ให้ rich menu ขึ้น OA
+3. ถ้าจะเปิด webhook OA → ตั้ง Cloudflare Worker relay
