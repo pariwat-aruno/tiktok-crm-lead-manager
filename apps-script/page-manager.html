@@ -70,74 +70,46 @@ async function renderPending() {
   const list = r.pending || [];
   if (list.length === 0) { U.$('#tabBody').innerHTML = '<div class="card empty">ไม่มีคำขอลงทะเบียน</div>'; return; }
   U.$('#tabBody').innerHTML = list.map(function (p) {
-    return '<div class="card">' +
-      '<div style="display:flex;gap:10px;">' +
-        '<img class="img-preview" src="' + U.esc(p.selfieUrl) + '" alt="selfie" onerror="this.style.display=\'none\'">' +
-        '<div style="flex:1;">' +
-          '<div style="font-weight:600;">' + U.esc(p.fullName) + ' (' + U.esc(p.nickName) + ')</div>' +
-          '<div style="font-size:12px;color:var(--muted);">📱 ' + U.esc(p.phone) + '</div>' +
-          '<div style="font-size:11px;color:var(--muted);">ส่ง: ' + U.esc(p.requestedAt) + '</div>' +
-        '</div>' +
+    return '<div class="card" data-id="' + U.esc(p.pendingId) + '">' +
+      '<div style="font-weight:600;font-size:15px;">' + U.esc(p.fullName) + ' (' + U.esc(p.nickName) + ')</div>' +
+      '<div style="font-size:12px;color:var(--muted);">📱 ' + U.esc(p.phone) + (p.email ? ' · ' + U.esc(p.email) : '') + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">ส่งเมื่อ ' + U.esc(p.requestedAt) + '</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
+        '<div style="flex:1;"><div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Selfie</div>' +
+          '<a href="' + U.esc(p.selfieUrl) + '" target="_blank"><img src="' + U.esc(p.selfieUrl) + '" style="width:100%;border-radius:8px;border:1px solid var(--border);display:block;" onerror="this.style.display=\'none\'"></a></div>' +
+        '<div style="flex:1;"><div style="font-size:11px;color:var(--muted);margin-bottom:2px;">บัตรประชาชน</div>' +
+          '<a href="' + U.esc(p.idCardUrl) + '" target="_blank"><img src="' + U.esc(p.idCardUrl) + '" style="width:100%;border-radius:8px;border:1px solid var(--border);display:block;" onerror="this.style.display=\'none\'"></a></div>' +
       '</div>' +
-      '<div style="margin-top:10px;">' +
-        '<a href="' + U.esc(p.selfieUrl) + '" target="_blank" style="font-size:12px;color:var(--primary);">📸 ดู selfie</a> · ' +
-        '<a href="' + U.esc(p.idCardUrl) + '" target="_blank" style="font-size:12px;color:var(--primary);">🪪 ดูบัตร</a>' +
+      '<div style="display:flex;gap:6px;margin-bottom:6px;">' +
+        '<select class="select ap-role" style="flex:1;"><option value="staff">staff</option><option value="lead">lead</option><option value="manager">manager</option></select>' +
+        '<input class="input ap-team" placeholder="ทีม" style="flex:1;">' +
       '</div>' +
-      '<div style="margin-top:10px;display:flex;gap:8px;">' +
-        '<button class="btn btn-success" style="flex:1;" data-action="approve" data-id="' + U.esc(p.pendingId) + '">อนุมัติ</button>' +
-        '<button class="btn btn-outline" style="flex:1;" data-action="reject" data-id="' + U.esc(p.pendingId) + '">ปฏิเสธ</button>' +
+      '<input class="input ap-skus" placeholder="SKU ที่ดูแล (คั่นด้วย comma)" style="margin-bottom:8px;">' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="btn btn-success ap-approve" style="flex:1;">อนุมัติ</button>' +
+        '<button class="btn btn-outline ap-reject" style="flex:1;">ปฏิเสธ</button>' +
       '</div></div>';
   }).join('');
-  U.$$('[data-action]').forEach(function (b) {
-    b.addEventListener('click', function () { actPending(b.dataset.action, b.dataset.id); });
-  });
-}
-
-async function actPending(action, pendingId) {
-  if (action === 'approve') {
-    const data = await openApproveModal();
-    if (!data) return;
-    try {
-      await apiCall('approvePendingUser', {
-        pendingId: pendingId, decision: 'approve',
-        role: data.role, team: data.team, productSkus: data.skus,
-      });
-      U.toast('อนุมัติแล้ว');
-      renderPending();
-    } catch (e) { U.toast(e.message, true); }
-  } else {
-    const reason = await U.prompt('เหตุผลที่ไม่อนุมัติ?', { title: 'ปฏิเสธคำขอ', required: true });
-    if (!reason) return;
-    try {
-      await apiCall('approvePendingUser', { pendingId: pendingId, decision: 'reject', rejectionReason: reason });
-      U.toast('ปฏิเสธแล้ว');
-      renderPending();
-    } catch (e) { U.toast(e.message, true); }
-  }
-}
-
-function openApproveModal() {
-  return U._modal({
-    title: 'อนุมัติพนักงานใหม่',
-    body:
-      '<label style="font-size:12px;font-weight:600;">Role *</label>' +
-      '<select id="ap_role" class="select" style="margin:4px 0 10px;">' +
-        '<option value="staff">staff (พนักงานโทร)</option>' +
-        '<option value="lead">lead (หัวหน้าทีม)</option>' +
-        '<option value="manager">manager (ผู้จัดการ)</option>' +
-      '</select>' +
-      '<label style="font-size:12px;font-weight:600;">ทีม</label>' +
-      '<input id="ap_team" class="input" placeholder="เช่น ทีม A" style="margin:4px 0 10px;">' +
-      '<label style="font-size:12px;font-weight:600;">SKU ที่ดูแล (คั่นด้วย comma)</label>' +
-      '<input id="ap_skus" class="input" placeholder="SKU-001,SKU-002" style="margin:4px 0 10px;">',
-    okText: 'อนุมัติ',
-    onSubmit: function (modal) {
-      const role = modal.querySelector('#ap_role').value;
-      const team = modal.querySelector('#ap_team').value.trim();
-      const skus = modal.querySelector('#ap_skus').value
-        .split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-      return { role: role, team: team, skus: skus };
-    },
+  U.$$('.card[data-id]').forEach(function (card) {
+    const id = card.dataset.id;
+    card.querySelector('.ap-approve').addEventListener('click', async function () {
+      const role = card.querySelector('.ap-role').value;
+      const team = card.querySelector('.ap-team').value.trim();
+      const skus = card.querySelector('.ap-skus').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      const btn = this; btn.disabled = true; btn.textContent = 'กำลังอนุมัติ...';
+      try {
+        await apiCall('approvePendingUser', { pendingId: id, decision: 'approve', role: role, team: team, productSkus: skus });
+        U.toast('อนุมัติแล้ว'); renderPending();
+      } catch (e) { U.toast(e.message, true); btn.disabled = false; btn.textContent = 'อนุมัติ'; }
+    });
+    card.querySelector('.ap-reject').addEventListener('click', async function () {
+      const reason = await U.prompt('เหตุผลที่ไม่อนุมัติ?', { title: 'ปฏิเสธคำขอ', required: true });
+      if (!reason) return;
+      try {
+        await apiCall('approvePendingUser', { pendingId: id, decision: 'reject', rejectionReason: reason });
+        U.toast('ปฏิเสธแล้ว'); renderPending();
+      } catch (e) { U.toast(e.message, true); }
+    });
   });
 }
 

@@ -85,69 +85,46 @@ async function renderPending() {
   const list = r.pending || [];
   if (list.length === 0) { U.$('#tabBody').innerHTML = '<div class="card empty">ไม่มีคำขอ</div>'; return; }
   U.$('#tabBody').innerHTML = list.map(function (p) {
-    return '<div class="card">' +
-      '<div style="display:flex;gap:10px;">' +
-        '<img class="img-preview" src="' + U.esc(p.selfieUrl) + '" alt="selfie" onerror="this.style.display=\'none\'">' +
-        '<div style="flex:1;">' +
-          '<div style="font-weight:600;">' + U.esc(p.fullName) + ' (' + U.esc(p.nickName) + ')</div>' +
-          '<div style="font-size:12px;color:var(--muted);">📱 ' + U.esc(p.phone) + '</div>' +
-          '<div style="font-size:11px;color:var(--muted);">' + U.esc(p.requestedAt) + '</div>' +
-        '</div></div>' +
-      '<div style="margin-top:8px;font-size:12px;">' +
-        '<a href="' + U.esc(p.selfieUrl) + '" target="_blank" style="color:var(--primary);">📸 Selfie</a> · ' +
-        '<a href="' + U.esc(p.idCardUrl) + '" target="_blank" style="color:var(--primary);">🪪 บัตร</a>' +
+    return '<div class="card" data-id="' + U.esc(p.pendingId) + '">' +
+      '<div style="font-weight:600;font-size:15px;">' + U.esc(p.fullName) + ' (' + U.esc(p.nickName) + ')</div>' +
+      '<div style="font-size:12px;color:var(--muted);">📱 ' + U.esc(p.phone) + (p.email ? ' · ' + U.esc(p.email) : '') + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">ส่งเมื่อ ' + U.esc(p.requestedAt) + '</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
+        '<div style="flex:1;"><div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Selfie</div>' +
+          '<a href="' + U.esc(p.selfieUrl) + '" target="_blank"><img src="' + U.esc(p.selfieUrl) + '" style="width:100%;border-radius:8px;border:1px solid var(--border);display:block;" onerror="this.style.display=\'none\'"></a></div>' +
+        '<div style="flex:1;"><div style="font-size:11px;color:var(--muted);margin-bottom:2px;">บัตรประชาชน</div>' +
+          '<a href="' + U.esc(p.idCardUrl) + '" target="_blank"><img src="' + U.esc(p.idCardUrl) + '" style="width:100%;border-radius:8px;border:1px solid var(--border);display:block;" onerror="this.style.display=\'none\'"></a></div>' +
       '</div>' +
-      '<div style="display:flex;gap:8px;margin-top:10px;">' +
-        '<button class="btn btn-success" data-act="approve" data-id="' + U.esc(p.pendingId) + '" style="flex:1;">อนุมัติ</button>' +
-        '<button class="btn btn-outline" data-act="reject" data-id="' + U.esc(p.pendingId) + '" style="flex:1;">ปฏิเสธ</button>' +
+      '<div style="display:flex;gap:6px;margin-bottom:6px;">' +
+        '<select class="select ap-role" style="flex:1;"><option value="staff">staff</option><option value="lead">lead</option><option value="manager">manager</option></select>' +
+        '<input class="input ap-team" placeholder="ทีม" style="flex:1;">' +
+      '</div>' +
+      '<input class="input ap-skus" placeholder="SKU ที่ดูแล (คั่นด้วย comma)" style="margin-bottom:8px;">' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="btn btn-success ap-approve" style="flex:1;">อนุมัติ</button>' +
+        '<button class="btn btn-outline ap-reject" style="flex:1;">ปฏิเสธ</button>' +
       '</div></div>';
   }).join('');
-  U.$$('[data-act]').forEach(function (b) {
-    b.addEventListener('click', function () { actPending(b.dataset.act, b.dataset.id); });
-  });
-}
-
-async function actPending(action, pendingId) {
-  if (action === 'approve') {
-    const data = await openApproveModal();
-    if (!data) return;
-    try {
-      await apiCall('approvePendingUser', {
-        pendingId: pendingId, decision: 'approve',
-        role: data.role, team: data.team, productSkus: data.skus,
-      });
-      U.toast('อนุมัติแล้ว'); renderPending();
-    } catch (e) { U.toast(e.message, true); }
-  } else {
-    const reason = await U.prompt('เหตุผลที่ไม่อนุมัติ?', { title: 'ปฏิเสธคำขอ', required: true });
-    if (!reason) return;
-    try { await apiCall('approvePendingUser', { pendingId: pendingId, decision: 'reject', rejectionReason: reason }); U.toast('ปฏิเสธแล้ว'); renderPending(); }
-    catch (e) { U.toast(e.message, true); }
-  }
-}
-
-function openApproveModal() {
-  return U._modal({
-    title: 'อนุมัติพนักงานใหม่',
-    body:
-      '<label style="font-size:12px;font-weight:600;">Role *</label>' +
-      '<select id="ap_role" class="select" style="margin:4px 0 10px;">' +
-        '<option value="staff">staff (พนักงานโทร)</option>' +
-        '<option value="lead">lead (หัวหน้าทีม)</option>' +
-        '<option value="manager">manager (ผู้จัดการ)</option>' +
-      '</select>' +
-      '<label style="font-size:12px;font-weight:600;">ทีม</label>' +
-      '<input id="ap_team" class="input" placeholder="เช่น ทีม A" style="margin:4px 0 10px;">' +
-      '<label style="font-size:12px;font-weight:600;">SKU ที่ดูแล (คั่นด้วย comma)</label>' +
-      '<input id="ap_skus" class="input" placeholder="SKU-001,SKU-002" style="margin:4px 0 10px;">',
-    okText: 'อนุมัติ',
-    onSubmit: function (modal) {
-      const role = modal.querySelector('#ap_role').value;
-      const team = modal.querySelector('#ap_team').value.trim();
-      const skus = modal.querySelector('#ap_skus').value
-        .split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-      return { role: role, team: team, skus: skus };
-    },
+  U.$$('.card[data-id]').forEach(function (card) {
+    const id = card.dataset.id;
+    card.querySelector('.ap-approve').addEventListener('click', async function () {
+      const role = card.querySelector('.ap-role').value;
+      const team = card.querySelector('.ap-team').value.trim();
+      const skus = card.querySelector('.ap-skus').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      const btn = this; btn.disabled = true; btn.textContent = 'กำลังอนุมัติ...';
+      try {
+        await apiCall('approvePendingUser', { pendingId: id, decision: 'approve', role: role, team: team, productSkus: skus });
+        U.toast('อนุมัติแล้ว'); renderPending();
+      } catch (e) { U.toast(e.message, true); btn.disabled = false; btn.textContent = 'อนุมัติ'; }
+    });
+    card.querySelector('.ap-reject').addEventListener('click', async function () {
+      const reason = await U.prompt('เหตุผลที่ไม่อนุมัติ?', { title: 'ปฏิเสธคำขอ', required: true });
+      if (!reason) return;
+      try {
+        await apiCall('approvePendingUser', { pendingId: id, decision: 'reject', rejectionReason: reason });
+        U.toast('ปฏิเสธแล้ว'); renderPending();
+      } catch (e) { U.toast(e.message, true); }
+    });
   });
 }
 
@@ -189,37 +166,68 @@ async function renderEmployees() {
 }
 
 async function renderProducts() {
+  // render form ครั้งเดียว — ไม่ re-render ตอนเพิ่ม/ลบ (กันที่พิมพ์ค้างหาย)
+  U.$('#tabBody').innerHTML =
+    '<div class="card"><h3 style="font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">เพิ่ม Product</h3>' +
+    '<input id="psku" class="input" placeholder="SKU" style="margin-bottom:8px;">' +
+    '<input id="pname" class="input" placeholder="ชื่อสินค้า" style="margin-bottom:8px;">' +
+    '<input id="prebuy" class="input" type="number" placeholder="รอบโทรซ้ำ (วัน) เช่น 30" style="margin-bottom:8px;">' +
+    '<textarea id="pscript" class="textarea" placeholder="สคริปต์ ใช้ {name}, {product}, {last_order_date}"></textarea>' +
+    '<button class="btn btn-primary btn-block" id="addProd" style="margin-top:10px;">เพิ่ม</button>' +
+    '</div>' +
+    '<div id="prodList"><div class="loading">⏳</div></div>';
+
+  U.$('#addProd').addEventListener('click', async function () {
+    const sku = U.$('#psku').value.trim();
+    if (!sku) return U.toast('กรอก SKU', true);
+    const btn = U.$('#addProd');
+    btn.disabled = true; btn.textContent = 'กำลังเพิ่ม...';
+    try {
+      await apiCall('createProduct', {
+        sku: sku,
+        productName: U.$('#pname').value.trim(),
+        rebuyDays: Number(U.$('#prebuy').value) || 30,
+        scriptText: U.$('#pscript').value,
+      });
+      U.toast('เพิ่มแล้ว');
+      // clear แค่ form fields — ไม่แตะ list
+      U.$('#psku').value = ''; U.$('#pname').value = '';
+      U.$('#prebuy').value = ''; U.$('#pscript').value = '';
+      U.$('#psku').focus();
+      await renderProductList();
+    } catch (e) { U.toast(e.message, true); }
+    btn.disabled = false; btn.textContent = 'เพิ่ม';
+  });
+
+  await renderProductList();
+}
+
+async function renderProductList() {
+  const listEl = U.$('#prodList');
+  if (!listEl) return;
   const [pr, er] = await Promise.all([
     apiCall('getProductTeam'),
     apiCall('getAllEmployees'),
   ]);
   const products = pr.products || [];
   const employees = (er.employees || []).filter(function (e) { return e.isActive && !e.isBanned; });
-
-  // fetch team สำหรับแต่ละ product (parallel)
   const teams = await Promise.all(products.map(function (p) {
     return apiCall('getProductTeam', { sku: p.sku }).then(function (r) { return r.team || []; }).catch(function () { return []; });
   }));
 
-  let html = '<div class="card"><h3 style="font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">เพิ่ม Product</h3>' +
-    '<input id="psku" class="input" placeholder="SKU" style="margin-bottom:8px;">' +
-    '<input id="pname" class="input" placeholder="ชื่อสินค้า" style="margin-bottom:8px;">' +
-    '<input id="prebuy" class="input" type="number" placeholder="รอบโทรซ้ำ (วัน) เช่น 30" style="margin-bottom:8px;">' +
-    '<textarea id="pscript" class="textarea" placeholder="สคริปต์ ใช้ {name}, {product}, {last_order_date}"></textarea>' +
-    '<button class="btn btn-primary btn-block" id="addProd" style="margin-top:10px;">เพิ่ม</button>' +
-    '</div>';
-
   if (products.length === 0) {
-    html += '<div class="card empty">ยังไม่มี product</div>';
+    listEl.innerHTML = '<div class="card empty">ยังไม่มี product</div>';
+    return;
   }
 
-  products.forEach(function (p, i) {
+  listEl.innerHTML = products.map(function (p, i) {
     const team = teams[i] || [];
-    html += '<div class="card" data-sku="' + U.esc(p.sku) + '">' +
-      '<div style="display:flex;justify-content:space-between;align-items:start;">' +
-        '<div><div style="font-weight:600;">' + U.esc(p.sku) + ' — ' + U.esc(p.product_name || '') + '</div>' +
+    return '<div class="card" data-sku="' + U.esc(p.sku) + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:start;gap:6px;">' +
+        '<div style="flex:1;min-width:0;"><div style="font-weight:600;">' + U.esc(p.sku) + ' — ' + U.esc(p.product_name || '') + '</div>' +
         '<div style="font-size:11px;color:var(--muted);">รอบโทรซ้ำ ' + (p.rebuy_days || 30) + ' วัน</div></div>' +
-        '<button class="btn btn-outline btn-sm assign-btn" data-sku="' + U.esc(p.sku) + '">+ ผูกพนักงาน</button>' +
+        '<button class="btn btn-outline btn-sm assign-btn" data-sku="' + U.esc(p.sku) + '">+ ผูก</button>' +
+        '<button class="btn btn-danger btn-sm del-prod-btn" data-sku="' + U.esc(p.sku) + '">ลบ</button>' +
       '</div>' +
       '<div style="margin-top:10px;font-size:12px;color:var(--muted);">ผู้ดูแล (' + team.length + ')</div>' +
       (team.length === 0
@@ -234,21 +242,17 @@ async function renderProducts() {
             '</div>';
           }).join('')) +
       '</div>';
-  });
+  }).join('');
 
-  U.$('#tabBody').innerHTML = html;
-  U.$('#addProd').addEventListener('click', async function () {
-    const sku = U.$('#psku').value.trim();
-    if (!sku) return U.toast('กรอก SKU', true);
-    try {
-      await apiCall('createProduct', {
-        sku: sku,
-        productName: U.$('#pname').value.trim(),
-        rebuyDays: Number(U.$('#prebuy').value) || 30,
-        scriptText: U.$('#pscript').value,
-      });
-      U.toast('เพิ่มแล้ว'); renderProducts();
-    } catch (e) { U.toast(e.message, true); }
+  U.$$('.del-prod-btn').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      const ok = await U.confirm('ลบสินค้า ' + b.dataset.sku + '?\nผู้ดูแลทั้งหมดจะถูกปลด', { danger: true, okText: 'ลบ' });
+      if (!ok) return;
+      try {
+        await apiCall('deleteProduct', { sku: b.dataset.sku });
+        U.toast('ลบแล้ว'); renderProductList();
+      } catch (e) { U.toast(e.message, true); }
+    });
   });
 
   U.$$('.assign-btn').forEach(function (b) {
@@ -259,17 +263,13 @@ async function renderProducts() {
       const empId = await U.select('เลือกพนักงานที่จะให้ดูแล SKU: ' + sku, {
         title: 'ผูกพนักงาน',
         options: candidates.map(function (e) {
-          return {
-            value: e.employeeId,
-            label: e.displayName + ' (' + e.role + ')',
-            description: e.team || 'ไม่มีทีม',
-          };
+          return { value: e.employeeId, label: e.displayName + ' (' + e.role + ')', description: e.team || 'ไม่มีทีม' };
         }),
       });
       if (!empId) return;
       try {
         await apiCall('assignProduct', { employeeId: empId, sku: sku });
-        U.toast('ผูกแล้ว'); renderProducts();
+        U.toast('ผูกแล้ว'); renderProductList();
       } catch (e) { U.toast(e.message, true); }
     });
   });
@@ -280,7 +280,7 @@ async function renderProducts() {
       if (!ok) return;
       try {
         await apiCall('unassignProduct', { employeeId: b.dataset.emp, sku: b.dataset.sku });
-        U.toast('ปลดแล้ว'); renderProducts();
+        U.toast('ปลดแล้ว'); renderProductList();
       } catch (e) { U.toast(e.message, true); }
     });
   });

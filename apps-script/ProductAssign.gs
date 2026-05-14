@@ -27,6 +27,36 @@ function createProduct(args) {
   return { ok: true, sku: sku };
 }
 
+/**
+ * ลบ product (soft delete — is_active=false) + ปลด assignment ทั้งหมดของ SKU นี้ — owner only
+ */
+function deleteProduct(args) {
+  if (!isOwner(args.lineUserId)) return { ok: false, error: 'forbidden' };
+  const sku = String(args.sku || '').trim();
+  if (!sku) return { ok: false, error: 'no_sku' };
+  const prod = findOne('Products', 'sku', sku);
+  if (!prod) return { ok: false, error: 'sku_not_found' };
+
+  return withLock(function () {
+    updateRow('Products', prod._row, { is_active: false });
+    let unassigned = 0;
+    rows('ProductAssignments').forEach(function (a) {
+      if (String(a.sku) === String(sku) && isTruthy(a.is_active)) {
+        updateRow('ProductAssignments', a._row, { is_active: false });
+        unassigned++;
+      }
+    });
+    audit({
+      actor: args.lineUserId, actorRole: 'owner',
+      action: 'product.deleted',
+      targetType: 'product', targetId: sku,
+      before: { is_active: true },
+      after: { is_active: false, assignments_removed: unassigned },
+    });
+    return { ok: true, sku: sku, assignmentsRemoved: unassigned };
+  });
+}
+
 function assignProduct(args) {
   const uid = args.lineUserId;
   if (!isManager(uid) && !isOwner(uid)) return { ok: false, error: 'forbidden' };
@@ -127,8 +157,8 @@ function getProductTeam(args) {
 
   const sku = args.sku;
   if (!sku) {
-    // list ทุก product
-    return { ok: true, products: rows('Products') };
+    // list เฉพาะ product ที่ยัง active
+    return { ok: true, products: rows('Products').filter(function (p) { return isTruthy(p.is_active); }) };
   }
 
   const team = rows('ProductAssignments').filter(function (a) {

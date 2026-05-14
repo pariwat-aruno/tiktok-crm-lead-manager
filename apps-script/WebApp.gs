@@ -165,6 +165,7 @@ function route_(action, args) {
 
     // Owner
     case 'createProduct':     return createProduct(args);
+    case 'deleteProduct':     return deleteProduct(args);
     case 'assignProduct':     return assignProduct(args);
     case 'unassignProduct':   return unassignProduct(args);
     case 'getMyProducts':     return getMyProducts(args);
