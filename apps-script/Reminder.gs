@@ -3,17 +3,24 @@
  */
 
 function setupTriggers() {
+  const handled = ['morningPush', 'tickSLA', 'dormantCycle', 'dailyReport',
+                   'prepareMorningQueue', 'checkClockInDeadline', 'endOfDayCleanup'];
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    const fn = t.getHandlerFunction();
-    if (['morningPush', 'tickSLA', 'dormantCycle', 'dailyReport'].indexOf(fn) >= 0) {
-      ScriptApp.deleteTrigger(t);
-    }
+    if (handled.indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
   });
+
+  // Tier 1+2 allocation
+  ScriptApp.newTrigger('prepareMorningQueue').timeBased().atHour(6).everyDays(1).inTimezone(TZ).create();
+  ScriptApp.newTrigger('checkClockInDeadline').timeBased().atHour(9).nearMinute(30).everyDays(1).inTimezone(TZ).create();
+  ScriptApp.newTrigger('endOfDayCleanup').timeBased().atHour(18).everyDays(1).inTimezone(TZ).create();
+
+  // เดิม
   ScriptApp.newTrigger('morningPush').timeBased().atHour(9).everyDays(1).inTimezone(TZ).create();
   ScriptApp.newTrigger('tickSLA').timeBased().everyHours(1).create();
   ScriptApp.newTrigger('dormantCycle').timeBased().atHour(2).everyDays(1).inTimezone(TZ).create();
   ScriptApp.newTrigger('dailyReport').timeBased().atHour(18).everyDays(1).inTimezone(TZ).create();
-  Logger.log('✓ ติดตั้ง 4 cron triggers');
+
+  Logger.log('✓ ติดตั้ง 7 cron triggers (3 tier1+2 + 4 เดิม)');
 }
 
 function morningPush() {

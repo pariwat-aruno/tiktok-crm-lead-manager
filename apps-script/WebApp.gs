@@ -145,6 +145,15 @@ function route_(action, args) {
     case 'logCopyPhone':     return logCopyPhone(args);
     case 'recordCallResult': return recordCallResult(args);
 
+    // Attendance (clock-in/out)
+    case 'clockIn':          return clockIn(args);
+    case 'clockOut':         return clockOut(args);
+    case 'getAttendance':    return getAttendance(args);
+
+    // Allocation (Lead actions on no-show)
+    case 'restoreSlot':      return restoreSlot(args);
+    case 'cancelSlot':       return cancelSlot(args);
+
     // Leave
     case 'requestLeave':     return requestLeave(args);
     case 'approveLeave':     return approveLeave(args);

@@ -13,6 +13,7 @@ function getMyQueue(args) {
   const emp = findEmployee(uid);
   if (!emp) return { ok: false, error: 'no_employee' };
 
+  const today = todayBkk();
   const myLeads = rows('Leads').filter(function (l) {
     return String(l.assigned_to) === String(emp.employee_id) &&
            ['pending', 'no_answer', 'postponed'].indexOf(String(l.status)) >= 0;
@@ -20,23 +21,41 @@ function getMyQueue(args) {
   const custMap = {};
   rows('Customers').forEach(function (c) { custMap[c.customer_id] = c; });
 
-  myLeads.sort(function (a, b) { return String(a.due_date).localeCompare(String(b.due_date)); });
+  function mapLead(l) {
+    const c = custMap[l.customer_id] || {};
+    return {
+      leadId: l.lead_id, customerId: l.customer_id,
+      name: c.name || '', phone: c.phone || '',
+      primarySku: l.primary_sku || '',
+      status: l.status, dueDate: l.due_date,
+      tier: l.tier || '', heldStatus: l.held_status || '',
+      bucketDate: l.bucket_date || '',
+      orderIds: String(l.order_ids || '').split(',').filter(function (s) { return s; }),
+      assignedAt: l.assigned_at, note: l.note || '',
+    };
+  }
+
+  // Tier 1 = ลูกค้าตัวเอง (tier=1, ว่าง, legacy)  →  ดูได้ทุกวัน
+  const tier1 = myLeads.filter(function (l) {
+    return String(l.tier) !== '2';
+  }).sort(function (a, b) { return String(a.due_date).localeCompare(String(b.due_date)); }).map(mapLead);
+
+  // Tier 2 = เบอร์ใหม่ของวันนี้ (tier=2 + bucket_date=today) — show เฉพาะ active (confirmed clock-in)
+  // ขณะ held → ยังไม่แสดง (รอ clock-in)
+  const tier2 = myLeads.filter(function (l) {
+    return String(l.tier) === '2'
+      && String(l.bucket_date) === today
+      && String(l.held_status) !== 'released';
+  }).sort(function (a, b) { return String(a.assigned_at).localeCompare(String(b.assigned_at)); }).map(mapLead);
 
   return {
     ok: true,
     employeeId: emp.employee_id,
     displayName: emp.display_name,
-    queue: myLeads.map(function (l) {
-      const c = custMap[l.customer_id] || {};
-      return {
-        leadId: l.lead_id, customerId: l.customer_id,
-        name: c.name || '', phone: c.phone || '',
-        primarySku: l.primary_sku || '',
-        status: l.status, dueDate: l.due_date,
-        orderIds: String(l.order_ids || '').split(',').filter(function (s) { return s; }),
-        assignedAt: l.assigned_at, note: l.note || '',
-      };
-    }),
+    tier1: tier1,
+    tier2: tier2,
+    // backward-compat field
+    queue: tier1.concat(tier2),
   };
 }
 

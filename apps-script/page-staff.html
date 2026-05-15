@@ -27,29 +27,85 @@ const STATE = { current: null };
 })();
 
 async function loadQueue() {
-  U.$('#app').innerHTML = '<div class="app"><div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>คิวลูกค้า</h1></div><div class="content"><div class="loading">⏳</div></div></div>';
+  U.$('#app').innerHTML = '<div class="app"><div class="header"><div class="brand">' + U.esc(APP.brand) + '</div><h1>เข้าระบบ...</h1></div><div class="content"><div class="loading">⏳</div></div></div>';
   try {
-    const r = await apiCall('getMyQueue');
-    renderQueue(r);
+    const [qr, ar] = await Promise.all([apiCall('getMyQueue'), apiCall('getAttendance')]);
+    renderHome(qr, ar.attendance || {});
   } catch (err) { U.showError(err.message); }
 }
 
-function renderQueue(r) {
-  const queue = r.queue || [];
+function renderHome(r, att) {
+  const tier1 = r.tier1 || [];
+  const tier2 = r.tier2 || [];
+  const status = att.status || 'pending';
+
+  // clock-in section
+  let clockHtml = '<div class="card" style="text-align:center;">';
+  if (status === 'pending') {
+    clockHtml += '<div style="font-size:13px;color:var(--muted);margin-bottom:8px;">ยังไม่เข้างานวันนี้</div>' +
+      '<button id="clockInBtn" class="btn btn-primary btn-block">⏰ Clock-in (เริ่มงาน)</button>';
+  } else if (status === 'active' || status === 'late') {
+    const hhmm = String(att.clockInAt || '').slice(11, 16);
+    clockHtml += '<div style="font-size:13px;color:var(--muted);">เข้างาน ' + U.esc(hhmm) + (status === 'late' ? ' (สาย)' : '') + '</div>' +
+      '<button id="clockOutBtn" class="btn btn-outline btn-block" style="margin-top:8px;">⏏ Clock-out (เลิกงาน)</button>';
+  } else if (status === 'leave') {
+    clockHtml += '<div style="font-size:13px;color:var(--warn);">📋 วันนี้ลา</div>';
+  } else if (status === 'no_show') {
+    clockHtml += '<div style="font-size:13px;color:var(--danger);">⚠️ ยังไม่เข้างาน (เกิน 09:30) — รอหัวหน้าตัดสิน</div>' +
+      '<button id="clockInBtn" class="btn btn-primary btn-block" style="margin-top:8px;">ลองเข้างาน</button>';
+  } else if (status === 'cancelled') {
+    clockHtml += '<div style="font-size:13px;color:var(--muted);">วันนี้หัวหน้ายกเลิก — Tier 2 ไม่มีเบอร์</div>';
+  } else if (status === 'auto_out') {
+    const hhmm = String(att.clockInAt || '').slice(11, 16);
+    clockHtml += '<div style="font-size:13px;color:var(--muted);">เข้างาน ' + U.esc(hhmm) + ' · auto clock-out แล้ว</div>';
+  }
+  clockHtml += '</div>';
+
   let html = '<div class="app">' +
     '<div class="header"><div class="brand">' + U.esc(APP.brand) + '</div>' +
     '<h1>สวัสดี คุณ' + U.esc(r.displayName || '') + '</h1>' +
-    '<div class="sub">มี ' + queue.length + ' รายในคิว · <a href="' + pageUrl('leave') + '" style="color:#fff;text-decoration:underline;">ขอลา</a></div></div>' +
-    '<div class="content">';
+    '<div class="sub">Tier 1: ' + tier1.length + ' · Tier 2: ' + tier2.length + ' · <a href="' + pageUrl('leave') + '" style="color:#fff;text-decoration:underline;">ขอลา</a></div></div>' +
+    '<div class="content">' + clockHtml;
 
-  if (queue.length === 0) {
-    html += '<div class="card empty">🎉 ไม่มีลูกค้ารอโทร</div>';
-  } else {
-    html += '<div class="card" style="padding:0;">';
-    const now = Date.now();
-    queue.forEach(function (l) {
+  html += _renderQueueSection('🎯 Tier 1 — ลูกค้าตัวเอง', tier1);
+  html += _renderQueueSection('📞 Tier 2 — เบอร์ใหม่วันนี้', tier2);
+
+  if (tier1.length === 0 && tier2.length === 0) {
+    html += '<div class="card empty" style="margin-top:14px;">🎉 ไม่มีลูกค้ารอโทร</div>';
+  }
+  html += '</div></div>';
+  U.$('#app').innerHTML = html;
+
+  const inBtn = U.$('#clockInBtn');
+  if (inBtn) inBtn.addEventListener('click', async function () {
+    inBtn.disabled = true; inBtn.textContent = 'กำลัง clock-in...';
+    try {
+      const r2 = await apiCall('clockIn');
+      U.toast('เข้างาน' + (r2.status === 'late' ? 'สาย' : '') + ' · Tier 2 ' + (r2.holdsConfirmed || 0) + ' เบอร์');
+      loadQueue();
+    } catch (e) { U.toast(e.message, true); inBtn.disabled = false; inBtn.textContent = '⏰ Clock-in'; }
+  });
+
+  const outBtn = U.$('#clockOutBtn');
+  if (outBtn) outBtn.addEventListener('click', async function () {
+    const ok = await U.confirm('Clock-out ตอนนี้?'); if (!ok) return;
+    try { await apiCall('clockOut'); U.toast('เลิกงานแล้ว'); loadQueue(); }
+    catch (e) { U.toast(e.message, true); }
+  });
+
+  U.$$('.lead-row').forEach(function (row) {
+    row.addEventListener('click', function () { openLead(row.dataset.id); });
+  });
+}
+
+function _renderQueueSection(title, list) {
+  if (list.length === 0) return '';
+  const now = Date.now();
+  return '<div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin:14px 0 6px;font-weight:600;">' + title + ' (' + list.length + ')</div>' +
+    '<div class="card" style="padding:0;">' +
+    list.map(function (l) {
       const overdue = l.dueDate && new Date(l.dueDate).getTime() < now;
-      html += '<div class="lead-row ' + (overdue ? 'overdue' : '') + '" data-id="' + U.esc(l.leadId) + '">' +
+      return '<div class="lead-row ' + (overdue ? 'overdue' : '') + '" data-id="' + U.esc(l.leadId) + '">' +
         '<div style="flex:1;">' +
           '<div style="font-weight:600;">' + U.esc(l.name || '(ไม่มีชื่อ)') + '</div>' +
           '<div style="font-size:12px;color:var(--muted);">📱 ' + U.esc(l.phone || '-') + (l.primarySku ? ' · ' + U.esc(l.primarySku) : '') + '</div>' +
@@ -58,14 +114,8 @@ function renderQueue(r) {
           (l.status === 'no_answer' ? '<span class="badge">ไม่รับ</span>' : '') +
         '</div>' +
         '<div style="color:var(--muted);align-self:center;">›</div></div>';
-    });
-    html += '</div>';
-  }
-  html += '</div></div>';
-  U.$('#app').innerHTML = html;
-  U.$$('.lead-row').forEach(function (row) {
-    row.addEventListener('click', function () { openLead(row.dataset.id); });
-  });
+    }).join('') +
+    '</div>';
 }
 
 async function openLead(leadId) {

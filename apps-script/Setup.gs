@@ -63,6 +63,27 @@ const SHEET_HEADERS = {
     'assigned_to', 'assigned_at', 'assignment_reason',
     'status', 'due_date', 'next_action_at', 'closed_at',
     'result', 'reject_reason', 'note', 'session_id',
+    // ── Tier 1+2 + Clock-in (เพิ่มต่อท้าย — ไม่ shift columns เก่า) ──
+    'tier',          // 1 = ลูกค้าตัวเอง, 2 = เบอร์ใหม่, '' = legacy
+    'held_status',   // active/held/released
+    'bucket_date',   // วันที่ของคิว YYYY-MM-DD
+  ],
+
+  Attendance: [
+    'attendance_id', 'employee_id', 'date',
+    'clock_in_at', 'clock_out_at',
+    'status',        // pending/active/late/no_show/leave/banned/cancelled/auto_out
+    'tier1_count', 'tier2_count',
+    'calls_made', 'calls_answered', 'orders_closed', 'revenue',
+    'total_duration_seconds',
+    'note',
+  ],
+
+  LeadHolds: [
+    'hold_id', 'lead_id',
+    'held_by_employee_id', 'held_at', 'held_until',
+    'reason',        // clock_in_pending/restored/redistributed/temp
+    'released_at', 'released_reason',
   ],
 
   CallLogs: [
@@ -117,6 +138,11 @@ const DEFAULT_CONFIG = [
   ['leave_min_advance_days', '0', 'ลาล่วงหน้าขั้นต่ำ'],
   ['leave_max_days', '14', 'ลาได้สูงสุด/ครั้ง'],
   ['drive_folder_id', '', 'Drive folder for uploads'],
+  // ── Tier 1+2 + Clock-in ──
+  ['clock_in_deadline', '09:30', 'เวลา clock-in deadline'],
+  ['clock_out_target', '18:00', 'เวลาเลิกงานเป้าหมาย'],
+  ['queue_prepare_time', '06:00', 'cron เตรียมคิวเช้า'],
+  ['tier2_daily_quota', '30', 'เบอร์ใหม่/คน/วัน (Tier 2)'],
 ];
 
 /**
