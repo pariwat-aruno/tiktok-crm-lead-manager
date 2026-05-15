@@ -64,14 +64,19 @@ function roundRobinPick(staffList) {
 
 /**
  * Merge ถ้ามี lead pending สำหรับ customer คนเดียวกัน หรือสร้างใหม่
+ *
+ * Tier 1+2 model (เปลี่ยนจากเดิม):
+ *   - ลูกค้าเก่าที่มี owner active → assign ให้ owner เดิม (tier=1, inherit)
+ *   - เบอร์ใหม่ → leave unassigned → fresh pool ให้ Tier 2 cron pick ที่ 06:00
  */
 function mergeOrCreateLead(customer, orderId, primarySku, sessionId) {
   if (isTruthy(customer.blacklist)) return { skipped: 'blacklist' };
 
   return withLock(function () {
+    // merge ถ้ามี lead เปิดอยู่ของลูกค้าคนนี้ (รวม unassigned)
     const existing = rows('Leads').filter(function (l) {
       return String(l.customer_id) === String(customer.customer_id) &&
-             ['pending', 'no_answer', 'postponed'].indexOf(String(l.status)) >= 0;
+             ['unassigned', 'pending', 'no_answer', 'postponed'].indexOf(String(l.status)) >= 0;
     });
 
     if (existing.length > 0) {
@@ -84,7 +89,20 @@ function mergeOrCreateLead(customer, orderId, primarySku, sessionId) {
       return { leadId: lead.lead_id, merged: true };
     }
 
-    const owner = resolveOwner({ customer: customer, primarySku: primarySku });
+    // ลอง inherit ลูกค้าเก่า — ถ้า owner active → assign Tier 1
+    // ถ้าไม่ → leave unassigned → fresh pool (Tier 2 cron จะ pick)
+    let assignedTo = '', assignedAt = '', reason = '', status = 'unassigned', tier = '';
+    if (customer && customer.owner_employee_id) {
+      const ownerEmp = findOne('Employees', 'employee_id', customer.owner_employee_id);
+      if (ownerEmp && isActive(ownerEmp)) {
+        assignedTo = ownerEmp.employee_id;
+        assignedAt = nowBkk();
+        reason = 'inherit';
+        status = 'pending';
+        tier = 1;
+      }
+    }
+
     const cfg = getConfig();
     const slaH = Number(cfg.sla_hours) || 48;
     const leadId = nextDated('LEAD', 'Leads', 'lead_id');
@@ -95,31 +113,28 @@ function mergeOrCreateLead(customer, orderId, primarySku, sessionId) {
       customer_id: customer.customer_id,
       order_ids: orderId,
       primary_sku: primarySku || '',
-      assigned_to: owner.employeeId,
-      assigned_at: nowBkk(),
-      assignment_reason: owner.method,
-      status: 'pending',
+      assigned_to: assignedTo,
+      assigned_at: assignedAt,
+      assignment_reason: reason,
+      status: status,
       due_date: due,
       next_action_at: '',
       closed_at: '',
       result: '', reject_reason: '', note: '',
       session_id: sessionId || '',
+      tier: tier,
+      held_status: '',
+      bucket_date: '',
     });
 
     audit({
       actor: 'SYSTEM', actorRole: 'system',
-      action: 'lead.assigned',
+      action: assignedTo ? 'lead.inherited' : 'lead.created_unassigned',
       targetType: 'lead', targetId: leadId,
       before: null,
-      after: { customer_id: customer.customer_id, owner: owner.employeeId, sku: primarySku, method: owner.method },
+      after: { customer_id: customer.customer_id, owner: assignedTo || '(fresh pool)', sku: primarySku, method: reason || 'fresh' },
     });
 
-    // อัปเดต owner ใน customer
-    if (owner.method !== 'inherit') {
-      const cr = findRowIndex('Customers', 'customer_id', customer.customer_id);
-      if (cr > 0) updateRow('Customers', cr, { owner_employee_id: owner.employeeId });
-    }
-
-    return { leadId: leadId, merged: false };
+    return { leadId: leadId, merged: false, assigned: !!assignedTo };
   });
 }
