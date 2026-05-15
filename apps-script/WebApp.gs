@@ -184,6 +184,9 @@ function route_(action, args) {
     case 'unbanEmployee':     return unbanEmployee(args);
     case 'getOwnerDashboard': return getOwnerDashboard(args);
     case 'getFullAuditLog':   return getFullAuditLog(args);
+    case 'getQueueSnapshot':  return getQueueSnapshot(args);
+    case 'getAllLeads':       return getAllLeads(args);
+    case 'getLeadFullDetail': return getLeadFullDetail(args);
     case 'importCsv':         return importCsv(args);
     case 'rollbackSession':   return rollbackSession(args);
     case 'getRecentSessions': return getRecentSessions(args);

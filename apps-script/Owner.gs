@@ -194,6 +194,160 @@ function getOwnerDashboard(args) {
   };
 }
 
+/**
+ * Snapshot คิว — counts + per-employee สำหรับ tab "คิว" ของ owner
+ */
+function getQueueSnapshot(args) {
+  if (!isManager(args.lineUserId) && !isOwner(args.lineUserId)) return { ok: false, error: 'forbidden' };
+
+  const allLeads = rows('Leads');
+  const now = Date.now();
+  const today = todayBkk();
+
+  let tier1 = 0, tier2 = 0, overdue = 0, freshPool = 0, closedToday = 0;
+  allLeads.forEach(function (l) {
+    const open = ['pending', 'no_answer', 'postponed'].indexOf(String(l.status)) >= 0;
+    if (open) {
+      if (String(l.tier) === '2') tier2++; else tier1++;
+      if (l.due_date && new Date(l.due_date).getTime() < now) overdue++;
+    }
+    if (String(l.status) === 'unassigned') freshPool++;
+    if (String(l.status) === 'closed' && String(l.closed_at || '').indexOf(today) === 0) closedToday++;
+  });
+  const activeHolds = rows('LeadHolds').filter(function (h) { return !h.released_at; }).length;
+
+  const empMap = {};
+  rows('Employees').filter(function (e) { return isActive(e) && String(e.role) === 'staff'; })
+    .forEach(function (e) {
+      empMap[e.employee_id] = {
+        id: e.employee_id, name: e.display_name, team: e.team || '',
+        tier1: 0, tier2: 0, calls: 0, bought: 0, revenue: 0,
+        attendance: 'pending', clockInAt: '',
+      };
+    });
+  allLeads.forEach(function (l) {
+    if (!empMap[l.assigned_to]) return;
+    if (['pending', 'no_answer', 'postponed'].indexOf(String(l.status)) < 0) return;
+    if (String(l.tier) === '2') empMap[l.assigned_to].tier2++;
+    else empMap[l.assigned_to].tier1++;
+  });
+  rows('Attendance').forEach(function (a) {
+    if (String(a.date) !== today) return;
+    if (empMap[a.employee_id]) {
+      empMap[a.employee_id].attendance = a.status;
+      empMap[a.employee_id].clockInAt = a.clock_in_at || '';
+    }
+  });
+  rows('CallLogs').forEach(function (cl) {
+    if (String(cl.created_at || '').indexOf(today) !== 0) return;
+    if (cl.action !== 'call_result') return;
+    if (!empMap[cl.employee_id]) return;
+    empMap[cl.employee_id].calls++;
+    if (cl.result === 'bought') empMap[cl.employee_id].bought++;
+  });
+
+  return {
+    ok: true,
+    snapshot: {
+      totalLeads: allLeads.length,
+      tier1: tier1, tier2: tier2,
+      overdue: overdue, freshPool: freshPool,
+      closedToday: closedToday, activeHolds: activeHolds,
+    },
+    employees: Object.values(empMap).sort(function (a, b) {
+      return (b.tier1 + b.tier2) - (a.tier1 + a.tier2);
+    }),
+  };
+}
+
+/**
+ * รายการ leads ทั้งหมด + filter
+ * args: { filter: {status, tier, assignedTo, sku, q}, limit }
+ */
+function getAllLeads(args) {
+  if (!isManager(args.lineUserId) && !isOwner(args.lineUserId)) return { ok: false, error: 'forbidden' };
+
+  let leads = rows('Leads');
+  const filter = args.filter || {};
+  if (filter.status) leads = leads.filter(function (l) { return String(l.status) === String(filter.status); });
+  if (filter.tier) leads = leads.filter(function (l) { return String(l.tier) === String(filter.tier); });
+  if (filter.assignedTo) leads = leads.filter(function (l) { return String(l.assigned_to) === String(filter.assignedTo); });
+  if (filter.sku) leads = leads.filter(function (l) { return String(l.primary_sku) === String(filter.sku); });
+
+  const custMap = {};
+  rows('Customers').forEach(function (c) { custMap[c.customer_id] = c; });
+  const empMap = {};
+  rows('Employees').forEach(function (e) { empMap[e.employee_id] = e; });
+
+  if (filter.q) {
+    const qN = normName(filter.q);
+    const qP = normPhone(filter.q);
+    leads = leads.filter(function (l) {
+      const c = custMap[l.customer_id];
+      if (!c) return false;
+      if (qN && String(c.name_normalized || '').indexOf(qN) >= 0) return true;
+      if (qP && String(c.phone || '').indexOf(qP) >= 0) return true;
+      return false;
+    });
+  }
+
+  leads.sort(function (a, b) {
+    const open = ['pending', 'no_answer', 'postponed', 'unassigned'];
+    const aOpen = open.indexOf(String(a.status)) >= 0;
+    const bOpen = open.indexOf(String(b.status)) >= 0;
+    if (aOpen !== bOpen) return aOpen ? -1 : 1;
+    return String(b.assigned_at || '').localeCompare(String(a.assigned_at || ''));
+  });
+
+  const total = leads.length;
+  const limit = Number(args.limit || 200);
+  leads = leads.slice(0, limit);
+
+  return {
+    ok: true, total: total, shown: leads.length,
+    leads: leads.map(function (l) {
+      const c = custMap[l.customer_id] || {};
+      const e = empMap[l.assigned_to] || {};
+      return {
+        leadId: l.lead_id, customerId: l.customer_id,
+        name: c.name || '', phone: c.phone || '',
+        sku: l.primary_sku || '',
+        status: l.status, tier: l.tier || '',
+        assignedTo: l.assigned_to || '',
+        assignedName: e.display_name || '',
+        team: e.team || '',
+        dueDate: l.due_date || '',
+        nextActionAt: l.next_action_at || '',
+        result: l.result || '',
+        blacklist: !!isTruthy(c.blacklist),
+        bucketDate: l.bucket_date || '',
+      };
+    }),
+  };
+}
+
+/**
+ * รายละเอียด lead (สำหรับ modal คลิกแถวใน tab คิว)
+ */
+function getLeadFullDetail(args) {
+  if (!isManager(args.lineUserId) && !isOwner(args.lineUserId)) return { ok: false, error: 'forbidden' };
+  const lead = findOne('Leads', 'lead_id', args.leadId);
+  if (!lead) return { ok: false, error: 'lead_not_found' };
+
+  const customer = findOne('Customers', 'customer_id', lead.customer_id);
+  const orderIds = String(lead.order_ids || '').split(',').filter(function (s) { return s.trim(); });
+  const orders = rows('Orders').filter(function (o) { return orderIds.indexOf(String(o.order_id)) >= 0; });
+  const callLogs = rows('CallLogs').filter(function (cl) { return String(cl.lead_id) === String(args.leadId); })
+    .sort(function (a, b) { return String(b.created_at).localeCompare(String(a.created_at)); });
+  const emp = lead.assigned_to ? findOne('Employees', 'employee_id', lead.assigned_to) : null;
+
+  return {
+    ok: true,
+    lead: lead, customer: customer, orders: orders, callLogs: callLogs,
+    assignedEmployee: emp,
+  };
+}
+
 function getFullAuditLog(args) {
   if (!isManager(args.lineUserId) && !isOwner(args.lineUserId)) return { ok: false, error: 'forbidden' };
   return {
