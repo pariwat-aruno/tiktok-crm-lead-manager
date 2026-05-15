@@ -1,6 +1,6 @@
 # BACKLOG — TikTok CRM Lead Manager
 
-> สถานะการ deploy + งานค้าง (อัปเดต 2026-05-14)
+> สถานะการ deploy + งานค้าง (อัปเดต 2026-05-16)
 
 ## Reference (ข้อมูลระบบ)
 
@@ -16,7 +16,6 @@
 | Owner LINE ID | `Ub47d6b519be013dbe6e83c4fbd079c56` (พี่ปุ้ย) |
 | GitHub repo | https://github.com/pariwat-aruno/tiktok-crm-lead-manager |
 | GitHub Pages | https://pariwat-aruno.github.io/tiktok-crm-lead-manager/ (`gh-pages` branch root) |
-| Apps Script deploy | `@16` |
 
 ### Deploy: แก้ apps-script/
 ```bash
@@ -27,9 +26,8 @@ cd ~/Downloads/tiktok-crm-lead-manager
 
 ### Deploy: แก้ HTML frontend
 ```bash
-node tools/build-frontend.js          # gen frontend/*.html จาก apps-script/*.html
-git add tools frontend && git commit && git push origin main
-# แล้ว sync ขึ้น gh-pages:
+node tools/build-frontend.js
+git add apps-script tools frontend && git commit && git push origin main
 git checkout gh-pages
 git checkout main -- frontend
 cp -f frontend/.nojekyll frontend/README.md frontend/*.html .
@@ -37,51 +35,106 @@ git rm -r --cached frontend; rm -rf frontend
 git add -A && git commit && git push origin gh-pages
 git checkout main
 ```
-> ⚠ git ops ที่ใช้เวลา — รันแบบ background (`run_in_background`) เพราะถ้า user พิมพ์ระหว่างรัน harness จะ cancel command
+> ⚠ git ops ที่ใช้เวลา — รันแบบ `run_in_background: true` เพราะถ้า user พิมพ์ระหว่างรัน harness จะ cancel command
 
 ## สถาปัตยกรรม
 
-**Mode หลักที่ใช้งานจริง = GitHub Pages** (พิสูจน์แล้วว่าทำงาน):
+**Mode หลัก = GitHub Pages frontend + Apps Script backend**
 ```
-LINE app → liff.line.me/<LIFF_ID>/app
-  → GitHub Pages index.html → โหลด LIFF SDK → liff.init() → route → app.html
-  → app.html → bootApp → initLiff (เห็น logged in แล้ว) → apiCall (fetch POST → Apps Script /exec)
-  → Owner Dashboard
+LINE app → liff.line.me/<LIFF_ID>/<path>
+  → GitHub Pages index.html → โหลด LIFF SDK → liff.init() → route → <page>.html
+  → bootApp → apiCall (fetch POST → Apps Script /exec) → JSON
 ```
-- frontend = static HTML บน GitHub Pages (`gh-pages` branch) — domain คงที่ ไม่ redirect → `liff.init()` ทำงาน
-- backend = Apps Script Web App — `apiCall` ยิง `fetch POST` ไป `/exec` ได้ JSON กลับ (CORS `*` + ไม่ติด 405)
-- `_app.html` มี dual-mode: ถ้า `APP.frontendBase` มี → GitHub Pages mode, ถ้าไม่มี → Apps Script-only mode (google.script.run + manual identity) — ตอนนี้ใช้ GitHub Pages เป็นหลัก
+- domain `pariwat-aruno.github.io` คงที่ ไม่ redirect → `liff.init()` ทำงาน
+- backend = Apps Script `/exec` — `fetch POST` ได้ JSON (CORS `*`)
+- `_app.html` dual-mode: GitHub Pages (default) / Apps Script-only (fallback ผ่าน `google.script.run`)
 
-## ✅ เสร็จ + ทดสอบผ่านแล้ว
+## ⭐ Feature ที่มีในระบบ
 
-- Code — audit + แก้ bug 12 จุด + RichMenuImage (Sarabun font)
-- Apps Script deploy `@16` + LIFF_ID + LINE token + owner
-- **LIFF เปิดได้** — ไม่ค้าง ไม่ redirect loop ไม่จอเล็ก
-- **Owner เปิด → เข้า Owner Dashboard ได้**
-- **User ใหม่ → route ไปหน้า register** + แสดง LINE User ID
-- **`apiCall` (fetch POST → Apps Script) ทำงาน** — owner dashboard โหลดข้อมูลได้
-- bug ที่แก้ระหว่าง deploy:
-  - `build-frontend.js` `$$`→`$` (replacement string) → ใช้ replacement function
-  - `index.html` redirect loop — redirect ก่อน `liff.init()` + ทิ้ง params → แก้: `liff.init()` ก่อน route + forward params ทั้งหมด
-  - viewport meta หาย ใน static build → เพิ่มใน `build-frontend.js`
-- ลบ `cloudflare/` (legacy worker proxy — เลิกใช้)
+### Core
+- 4 roles: owner / manager / lead / staff (visitor = ยังไม่ pair)
+- Onboarding ผ่าน LIFF + selfie + บัตรประชาชน → Drive → owner/manager approve
+- Audit log ครบทุก mutation
+- Flex card ทุกการสื่อสาร (ห้าม text เปลือย)
+- 4 cron เดิม: morningPush · tickSLA (warn only) · dormantCycle · dailyReport
 
-## ⏳ เหลือทดสอบ flow เต็ม
+### Tier 1+2 Lead Allocation (ใหม่)
+- **Tier 1** = ลูกค้าตัวเอง (inherit จาก owner_employee_id) — ไม่จำกัด, คงไว้เสมอ
+- **Tier 2** = เบอร์ใหม่ (fresh pool) — quota 30/คน/วัน
+- **06:00 cron** `prepareMorningQueue` — RR global per SKU + เช็ค quota เหลือ + `withLock`
+- **09:30 cron** `checkClockInDeadline` — no-show → release Tier 2 + push lead [คืน/ยกเลิก]
+- **18:00 cron** `endOfDayCleanup` — release Tier 2 ที่ไม่โทร + auto-cancel + auto clock-out
+- **Lead actions:** `restoreSlot` (คืน Tier 2) · `cancelSlot` (re-distribute ให้เพื่อนใน SKU)
 
-- [ ] tab สินค้า — createProduct + assignProduct UI
-- [ ] tab Upload CSV — importCsv
-- [ ] tab Pending — approvePendingUser (มี `U18177490...` ค้าง register ไว้ทดสอบได้)
-- [ ] หน้า ขอลา — requestLeave
-- [ ] tab สร้าง Rich Menu — `setupRichMenuFromBase64` (base64 canvas ~50-200KB ผ่าน fetch POST — ยังไม่ทดสอบ)
-- [ ] `setupRichMenuPrebuilt()` — รันใน Apps Script Editor ตั้ง rich menu (Sarabun font image)
+### Clock-in/out
+- **Attendance** sheet — ทุกคนต้อง clock-in ก่อน 09:30 (deadline config ได้)
+- clockIn() ปลด Tier 2 hold → confirm assignment
+- UI staff: ปุ่ม "⏰ Clock-in" / "⏏ Clock-out" + แสดงสถานะวันนี้
 
-## 🟢 ข้อจำกัด / ตัดสินใจภายหลัง
+### Owner tab 📋 คิว
+- **Snapshot** — คิวทั้งหมด · Tier 1/2 · เลย SLA · รอจัดสรร · Hold · ปิดวันนี้
+- **พนักงานวันนี้** — list + attendance status + T1/T2/โทร/ปิด
+- **รายการคิว** — filter (สถานะ/tier/ค้นชื่อ-เบอร์) + คลิกเห็น modal (customer + orders + call history)
+- **ปุ่ม ⚡ แจก Tier 2 ตอนนี้** — เรียก `runPrepareMorningQueue` manual (โผล่เมื่อมี freshPool > 0)
+- Thai labels: STATUS_TH · RESULT_TH · TIER_TH · ATT_TH
 
-- **webhook OA (`id`/`help`)** — POST ตรงเข้า Apps Script ได้ 302→405 → คำสั่งใน OA ใช้ไม่ได้ ต้องมี relay (Cloudflare Worker) ถึงจะเปิดได้ — **ปิดฟีเจอร์นี้ไว้ก่อน** (user หาตัวเองด้วยหน้า register ที่แสดง LINE User ID + `_manualIdentity` fallback)
-- **Apps Script-only mode** ยังอยู่ในโค้ด (`_app.html` dual-mode) — เผื่อ fallback แต่ไม่ได้ใช้เป็นหลัก — จะตัดออกหรือเก็บไว้ก็ได้
+### Import flow (เปลี่ยนจาก assign-time → fresh pool)
+```
+CSV → mergeOrCreateLead:
+  - ลูกค้าเก่า + owner active → Tier 1 inherit (assigned_to=owner, status=pending)
+  - เบอร์ใหม่ → unassigned (รอ Tier 2 cron pick)
+  - blacklist → skip
+```
+
+### Other Owner UI
+- tab Pending — รูป selfie + บัตรประชาชนในการ์ด + เลือก role/team/SKU inline → กดอนุมัติทีเดียว
+- tab สินค้า — form แยก list (ไม่ refresh ตอนพิมพ์) + ปุ่มลบ product (soft delete)
+- tab ลูกค้า — search + multi-select + merge customers
+- tab Upload CSV / Sessions / Audit
+- ลิงก์ "ขอลา" ใน header ทุกหน้า role lead+
+
+## 📊 Sheets (18)
+
+Owners · Employees · PendingUsers · Products · ProductAssignments · Customers · Orders · Leads (+tier/held_status/bucket_date) · CallLogs · Leaves · **Attendance** · **LeadHolds** · Sessions · Stats · AuditLog · Config · Logs
+
+## ⚙️ Cron (7)
+
+| เวลา | function | หน้าที่ |
+|---|---|---|
+| 06:00 | `prepareMorningQueue` | pick Tier 2 hold |
+| 09:00 | `morningPush` | flex แจ้งคิวพนักงาน |
+| 09:30 | `checkClockInDeadline` | no-show → release |
+| ทุก 1 ชม. | `tickSLA` | warn (ไม่ reassign แล้ว) |
+| 02:00 | `dormantCycle` | NEW → DORMANT → CHURNED |
+| 18:00 | `endOfDayCleanup` | EOD Tier 2 release + auto-out |
+| 18:00 | `dailyReport` | flex รายงาน owner+manager |
+
+## ⏳ ยังไม่ได้ทำ (folder 2 spec)
+
+- Call timer + pause/resume + note (UX โทร)
+- Inbound Order — staff สร้าง order ใหม่ → cancel นัดเก่า + reset rebuy
+- Conflict resolution — 2 คน claim ลูกค้าเดียวกัน
+- Cold-call list — 180 วันหยุดโทร
+- Performance alert — staff ต่ำกว่าเกณฑ์
+- Pairing code — 6 หลัก แทน LINE userId ตรงๆ
+
+## 🟢 ข้อจำกัดที่รับได้
+
+- **webhook OA** (`id`/`help`) — POST ตรงเข้า Apps Script ติด 302→405 → ปิดฟีเจอร์ไว้ (พนักงานใหม่ลงทะเบียนผ่าน LIFF page-register แสดง User ID ให้แล้ว)
+- Apps Script-only mode (fallback) ยังอยู่ใน `_app.html` — ไม่ใช้แต่เก็บไว้เผื่อ
+
+## 🛠 Setup steps (ครั้งเดียวหลัง deploy ใหม่)
+
+ทุกครั้งที่ schema เปลี่ยน (เพิ่ม sheet/field) ต้องรัน 2 function ใน Apps Script Editor:
+1. `setupAll` — สร้าง/อัปเดต sheets + Config defaults
+2. `setupTriggers` — ติดตั้ง 7 cron triggers
+
+## 🧪 Test data
+
+- `_seed10Leads()` ใน Setup.gs — สร้าง 10 customers + 10 orders + 10 leads (unassigned) ตาม SKU แรกของระบบ
+- หลัง seed → กดปุ่ม "⚡ แจก Tier 2 ตอนนี้" ใน Owner → tab คิว เพื่อ pick
 
 ## Next session
 
-1. ทดสอบ flow เต็ม (ดู ⏳) — ถ้าติดตรงไหนค่อย debug
-2. รัน `setupRichMenuPrebuilt()` ให้ rich menu ขึ้น OA
-3. ถ้าจะเปิด webhook OA → ตั้ง Cloudflare Worker relay
+1. ทดสอบ flow เต็ม: register → approve → clock-in → Tier 2 → โทร → ปิด → audit
+2. ถ้าจะทำ feature ต่อ — เลือกจากรายการ ⏳ ด้านบน
