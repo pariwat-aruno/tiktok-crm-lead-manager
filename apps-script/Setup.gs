@@ -419,6 +419,85 @@ function showInfo() {
 }
 
 /**
+ * Seed 10 test leads (unassigned — ให้ Tier 2 cron pick)
+ * ต้องมี Product active อย่างน้อย 1 SKU ก่อน
+ */
+function _seed10Leads() {
+  const existingProducts = rows('Products').filter(function (p) { return isTruthy(p.is_active); });
+  if (existingProducts.length === 0) {
+    Logger.log('⚠ ยังไม่มี Product active — เพิ่ม product ก่อนจากหน้า Owner → tab สินค้า');
+    return;
+  }
+  const sku = existingProducts[0].sku;
+  const productName = existingProducts[0].product_name || sku;
+  Logger.log('ใช้ SKU: ' + sku + ' (' + productName + ')');
+
+  const sessionId = 'SES-SEED-' + Utilities.formatDate(new Date(), TZ, 'yyyyMMdd-HHmmss');
+  appendRow('Sessions', {
+    session_id: sessionId, imported_by: 'SEED', csv_filename: 'seed_10.csv',
+    total_rows: 10, orders_created: 10, leads_created: 10, customers_created: 10,
+    status: 'active', created_at: nowBkk(), rolled_back_at: '',
+  });
+
+  const firstNames = ['สมศรี', 'สมชาย', 'ปวีณา', 'ภัทรกร', 'ธนวัฒน์', 'กัลยา', 'นวพร', 'อรทัย', 'พิเชษฐ', 'สุภาวดี'];
+  const lastNames = ['ใจดี', 'พรสวรรค์', 'มั่นคง', 'สุขสันต์', 'ก้าวหน้า', 'แสนดี', 'รักษ์ดี', 'อุดมสุข', 'ภักดี', 'ศรีสวัสดิ์'];
+
+  const cfg = getConfig();
+  const slaH = Number(cfg.sla_hours) || 48;
+  const due = Utilities.formatDate(addHours(new Date(), slaH), TZ, "yyyy-MM-dd'T'HH:mm:ssXXX");
+
+  for (let i = 0; i < 10; i++) {
+    const name = firstNames[i] + ' ' + lastNames[i];
+    const phone = '08' + Math.floor(10000000 + Math.random() * 89999999);
+    const custId = nextRunning('CUST', 'Customers', 'customer_id');
+
+    appendRow('Customers', {
+      customer_id: custId,
+      name: name, name_normalized: normName(name), phone: phone,
+      address: '', owner_employee_id: '',
+      stage: 'NEW', blacklist: false, blacklist_reason: '',
+      created_at: nowBkk(), last_order_at: nowBkk(), updated_at: nowBkk(),
+    });
+
+    const orderId = 'ORD-SEED-' + Utilities.formatDate(new Date(), TZ, 'yyyyMMddHHmmss') + '-' + (i + 1);
+    const amount = 500 + Math.floor(Math.random() * 1500);
+    appendRow('Orders', {
+      order_id: orderId, customer_id: custId, session_id: sessionId,
+      sku: sku, product_name: productName,
+      quantity: 1, amount: amount,
+      ordered_at: nowBkk(), imported_at: nowBkk(), csv_raw: '{}',
+    });
+
+    const leadId = nextDated('LEAD', 'Leads', 'lead_id');
+    appendRow('Leads', {
+      lead_id: leadId, customer_id: custId, order_ids: orderId,
+      primary_sku: sku,
+      assigned_to: '', assigned_at: '', assignment_reason: '',
+      status: 'unassigned', due_date: due,
+      next_action_at: '', closed_at: '',
+      result: '', reject_reason: '', note: '', session_id: sessionId,
+      tier: '', held_status: '', bucket_date: '',
+    });
+  }
+
+  audit({
+    actor: 'SYSTEM', actorRole: 'system',
+    action: 'session.imported',
+    targetType: 'session', targetId: sessionId,
+    before: null, after: { source: 'seed', count: 10, sku: sku },
+  });
+
+  Logger.log('✓ สร้าง 10 customers + 10 orders + 10 leads (unassigned)');
+  Logger.log('  SKU: ' + sku);
+  Logger.log('  Session: ' + sessionId);
+  Logger.log('');
+  Logger.log('ขั้นถัดไป:');
+  Logger.log('1. ตรวจว่ามีพนักงาน assign SKU ' + sku + ' แล้วยัง (Owner → tab สินค้า → + ผูก)');
+  Logger.log('2. รัน prepareMorningQueue() → จะ pick 10 เบอร์นี้ hold ให้พนักงาน');
+  Logger.log('3. พนักงานกด Clock-in → เห็น Tier 2 ในคิว');
+}
+
+/**
  * One-shot: เพิ่มพี่ปุ้ย (LINE userId hardcoded) เป็น owner คนแรก
  * รันครั้งเดียวจบ — หลังรันเสร็จลบ function นี้ทิ้งก็ได้
  */
