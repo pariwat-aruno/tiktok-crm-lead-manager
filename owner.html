@@ -599,6 +599,7 @@ function renderShell() {
     '<div class="content">' +
       '<div class="tabs">' +
         '<div class="tab active" data-tab="dashboard">📊</div>' +
+        '<div class="tab" data-tab="queue">📋 คิว</div>' +
         '<div class="tab" data-tab="pending">✋ Pending</div>' +
         '<div class="tab" data-tab="employees">👥 พนักงาน</div>' +
         '<div class="tab" data-tab="products">🛍 สินค้า</div>' +
@@ -623,6 +624,7 @@ async function loadTab(name) {
   body.innerHTML = '<div class="loading">⏳</div>';
   try {
     if (name === 'dashboard') await renderDashboard();
+    else if (name === 'queue') await renderQueueTab();
     else if (name === 'pending') await renderPending();
     else if (name === 'employees') await renderEmployees();
     else if (name === 'products') await renderProducts();
@@ -655,6 +657,153 @@ async function renderDashboard() {
     '<div class="row"><span class="k">Blacklist requests</span><span>' + (s.blacklistReq || 0) + '</span></div>' +
     '<div class="row"><span class="k">Blacklisted customers</span><span>' + (s.blacklistedCustomers || 0) + '</span></div>' +
     '</div>';
+}
+
+const STATUS_TH = {
+  unassigned: 'รอจัดสรร', pending: 'รอโทร', no_answer: 'ไม่รับสาย',
+  postponed: 'เลื่อนนัด', blacklist_req: 'ขอ Blacklist', closed: 'ปิดแล้ว',
+};
+const RESULT_TH = {
+  bought: 'ซื้อ', not_bought: 'ไม่ซื้อ', no_answer: 'ไม่รับ',
+  postponed: 'เลื่อน', rejected: 'ปฏิเสธ', blacklist_req: 'ขอ BL',
+};
+const TIER_TH = { '1': 'ของตัวเอง', '2': 'เบอร์ใหม่' };
+const ATT_TH = {
+  pending: 'รอเข้างาน', active: 'เข้างานแล้ว', late: 'เข้างานสาย',
+  no_show: '🔴 ไม่เข้างาน', leave: '📋 ลา', banned: '🚫 ถูก ban',
+  cancelled: 'หัวหน้ายกเลิก', auto_out: 'auto-out',
+};
+
+async function renderQueueTab() {
+  const [sr, lr] = await Promise.all([
+    apiCall('getQueueSnapshot'),
+    apiCall('getAllLeads', { limit: 200 }),
+  ]);
+  const s = sr.snapshot || {};
+  const emps = sr.employees || [];
+
+  let html = '<div class="card"><h3 style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;">Snapshot ตอนนี้</h3>' +
+    '<div class="stat-grid">' +
+    '<div class="stat-box"><div class="v">' + (s.totalLeads || 0) + '</div><div class="k">คิวทั้งหมด</div></div>' +
+    '<div class="stat-box"><div class="v">' + (s.tier1 || 0) + '</div><div class="k">Tier 1 (ของตัวเอง)</div></div>' +
+    '<div class="stat-box"><div class="v">' + (s.tier2 || 0) + '</div><div class="k">Tier 2 (เบอร์ใหม่)</div></div>' +
+    '<div class="stat-box"><div class="v red">' + (s.overdue || 0) + '</div><div class="k">เลย SLA</div></div>' +
+    '</div>' +
+    '<div class="stat-grid" style="margin-top:6px;">' +
+    '<div class="stat-box"><div class="v">' + (s.freshPool || 0) + '</div><div class="k">รอจัดสรร</div></div>' +
+    '<div class="stat-box"><div class="v">' + (s.activeHolds || 0) + '</div><div class="k">Hold</div></div>' +
+    '<div class="stat-box"><div class="v green">' + (s.closedToday || 0) + '</div><div class="k">ปิดวันนี้</div></div>' +
+    '</div></div>';
+
+  html += '<div class="card"><h3 style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;">พนักงานวันนี้</h3>';
+  if (emps.length === 0) html += '<div class="empty" style="padding:14px;color:var(--muted);">ไม่มีพนักงาน</div>';
+  else html += emps.map(function (e) {
+    const att = ATT_TH[e.attendance] || e.attendance;
+    const hhmm = String(e.clockInAt || '').slice(11, 16);
+    return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);align-items:center;">' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-weight:600;">' + U.esc(e.name) + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);">' + U.esc(e.team || '-') + ' · ' + U.esc(att) + (hhmm ? ' ' + hhmm : '') + '</div>' +
+      '</div>' +
+      '<div style="font-size:12px;text-align:right;">' +
+        'T1: ' + e.tier1 + ' · T2: ' + e.tier2 +
+        '<div style="font-size:11px;color:var(--muted);">โทร ' + e.calls + ' · ✓ ' + e.bought + '</div>' +
+      '</div></div>';
+  }).join('');
+  html += '</div>';
+
+  html += '<div class="card"><h3 style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;">รายการคิว (' + (lr.total || 0) + ')</h3>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">' +
+    '<select id="qStatus" class="select"><option value="">ทุกสถานะ</option>' +
+      Object.keys(STATUS_TH).map(function (k) { return '<option value="' + k + '">' + STATUS_TH[k] + '</option>'; }).join('') +
+    '</select>' +
+    '<select id="qTier" class="select"><option value="">ทุก tier</option><option value="1">Tier 1 (ของตัวเอง)</option><option value="2">Tier 2 (เบอร์ใหม่)</option></select>' +
+    '</div>' +
+    '<div style="display:flex;gap:6px;">' +
+      '<input id="qSearch" class="input" placeholder="ค้นชื่อ/เบอร์" style="flex:1;">' +
+      '<button class="btn btn-outline btn-sm" id="qApply">ค้นหา</button>' +
+    '</div></div>' +
+    '<div id="qList"></div>';
+
+  U.$('#tabBody').innerHTML = html;
+  U.$('#qApply').addEventListener('click', _applyQueueFilter);
+  U.$('#qSearch').addEventListener('keydown', function (e) { if (e.key === 'Enter') _applyQueueFilter(); });
+  _renderLeadsList(lr.leads || []);
+}
+
+async function _applyQueueFilter() {
+  const filter = {
+    status: U.$('#qStatus').value, tier: U.$('#qTier').value,
+    q: U.$('#qSearch').value.trim(),
+  };
+  U.$('#qList').innerHTML = '<div class="loading">⏳</div>';
+  try {
+    const r = await apiCall('getAllLeads', { filter: filter, limit: 200 });
+    _renderLeadsList(r.leads || []);
+  } catch (e) { U.$('#qList').innerHTML = '<div class="alert alert-error">' + U.esc(e.message) + '</div>'; }
+}
+
+function _renderLeadsList(leads) {
+  const now = Date.now();
+  if (leads.length === 0) { U.$('#qList').innerHTML = '<div class="card empty">ไม่มีคิว</div>'; return; }
+  U.$('#qList').innerHTML = leads.map(function (l) {
+    const overdue = l.dueDate && new Date(l.dueDate).getTime() < now && ['pending', 'no_answer', 'postponed'].indexOf(l.status) >= 0;
+    const statusTh = STATUS_TH[l.status] || l.status;
+    const resultTh = RESULT_TH[l.result] || '';
+    const tierTh = TIER_TH[l.tier] || '';
+    return '<div class="card" data-lead-id="' + U.esc(l.leadId) + '" style="cursor:pointer;' + (overdue ? 'border-left:3px solid var(--danger);' : '') + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:start;gap:8px;">' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-weight:600;">' + U.esc(l.name || '(ไม่มีชื่อ)') + (l.blacklist ? ' <span class="badge badge-overdue">BL</span>' : '') + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);">📱 ' + U.esc(l.phone || '-') + ' · ' + U.esc(l.sku || '-') + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:2px;">' +
+            (l.assignedName ? '👤 ' + U.esc(l.assignedName) : '<span style="color:var(--danger);">ยังไม่มีคนรับ</span>') +
+            (tierTh ? ' · ' + tierTh : '') +
+          '</div>' +
+        '</div>' +
+        '<div style="text-align:right;font-size:11px;white-space:nowrap;">' +
+          '<span class="badge ' + (overdue ? 'badge-overdue' : 'badge-info') + '">' + statusTh + '</span>' +
+          (resultTh ? '<div style="color:var(--muted);margin-top:2px;">' + resultTh + '</div>' : '') +
+        '</div>' +
+      '</div></div>';
+  }).join('');
+  U.$$('#qList .card[data-lead-id]').forEach(function (card) {
+    card.addEventListener('click', function () { _openLeadDetail(card.dataset.leadId); });
+  });
+}
+
+async function _openLeadDetail(leadId) {
+  try {
+    const r = await apiCall('getLeadFullDetail', { leadId: leadId });
+    const c = r.customer || {};
+    const orders = r.orders || [];
+    const callLogs = r.callLogs || [];
+    const emp = r.assignedEmployee;
+    const body =
+      '<div style="font-weight:600;font-size:15px;">' + U.esc(c.name || '(ไม่มีชื่อ)') + '</div>' +
+      '<div style="font-size:13px;color:var(--muted);">📱 ' + U.esc(c.phone || '-') + '</div>' +
+      (c.address ? '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">' + U.esc(c.address) + '</div>' : '<div style="margin-bottom:8px;"></div>') +
+      (emp
+        ? '<div style="font-size:12px;margin-bottom:8px;">👤 รับงาน: <b>' + U.esc(emp.display_name) + '</b> (' + U.esc(emp.team || '-') + ')</div>'
+        : '<div style="font-size:12px;color:var(--danger);margin-bottom:8px;">ยังไม่มีคนรับ</div>') +
+      '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-top:8px;">ออเดอร์ (' + orders.length + ')</div>' +
+      (orders.length === 0 ? '<div style="font-size:12px;color:var(--muted);padding:4px 0;">-</div>' :
+        orders.map(function (o) {
+          return '<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);">' +
+            U.esc(o.sku) + ' ' + U.esc(o.product_name || '') + ' · ฿' + Number(o.amount || 0).toLocaleString() +
+            ' <span style="color:var(--muted);">' + U.esc(String(o.ordered_at || '').slice(0, 10)) + '</span></div>';
+        }).join('')) +
+      '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-top:10px;">ประวัติการโทร (' + callLogs.length + ')</div>' +
+      (callLogs.length === 0 ? '<div style="font-size:12px;color:var(--muted);padding:4px 0;">-</div>' :
+        callLogs.slice(0, 10).map(function (cl) {
+          const result = cl.result ? ' → ' + (RESULT_TH[cl.result] || cl.result) : '';
+          return '<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);">' +
+            '<b>' + U.esc(cl.action) + '</b>' + U.esc(result) +
+            (cl.note ? '<div style="color:var(--muted);">' + U.esc(cl.note) + '</div>' : '') +
+            '<div style="font-size:10px;color:var(--muted);">' + U.esc(String(cl.created_at || '').slice(0, 16)) + '</div></div>';
+        }).join(''));
+    await U._modal({ title: 'รายละเอียดคิว', body: body, okText: 'ปิด', cancelText: '' });
+  } catch (e) { U.toast(e.message, true); }
 }
 
 async function renderPending() {
