@@ -20,6 +20,12 @@
     font-size: 15px; background: #fafafa; color: var(--text); line-height: 1.5;
   }
   .app { max-width: 480px; margin: 0 auto; min-height: 100vh; background: #fff; padding-bottom: 60px; }
+  @media (min-width: 768px) {
+    body { background: #eceef1; }
+    .app { max-width: 860px; margin: 16px auto; min-height: calc(100vh - 32px); border-radius: 12px; box-shadow: 0 2px 16px rgba(0,0,0,.08); }
+    .content { padding: 20px; }
+    .stat-grid { grid-template-columns: repeat(4, 1fr); }
+  }
   .header { background: var(--primary); color: #fff; padding: 14px 16px; }
   .brand { font-size: 11px; opacity: .85; letter-spacing: 1px; text-transform: uppercase; }
   .header h1 { font-size: 18px; margin-top: 2px; }
