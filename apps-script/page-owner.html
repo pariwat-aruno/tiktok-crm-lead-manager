@@ -116,7 +116,9 @@ async function renderQueueTab() {
     '<div class="stat-box"><div class="v">' + (s.freshPool || 0) + '</div><div class="k">รอจัดสรร</div></div>' +
     '<div class="stat-box"><div class="v">' + (s.activeHolds || 0) + '</div><div class="k">Hold</div></div>' +
     '<div class="stat-box"><div class="v green">' + (s.closedToday || 0) + '</div><div class="k">ปิดวันนี้</div></div>' +
-    '</div></div>';
+    '</div>' +
+    (s.freshPool > 0 ? '<button id="distNow" class="btn btn-primary btn-block" style="margin-top:10px;">⚡ แจก Tier 2 ให้พนักงานตอนนี้ (' + s.freshPool + ' เบอร์)</button>' : '') +
+    '</div>';
 
   html += '<div class="card"><h3 style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;">พนักงานวันนี้</h3>';
   if (emps.length === 0) html += '<div class="empty" style="padding:14px;color:var(--muted);">ไม่มีพนักงาน</div>';
@@ -151,6 +153,19 @@ async function renderQueueTab() {
   U.$('#tabBody').innerHTML = html;
   U.$('#qApply').addEventListener('click', _applyQueueFilter);
   U.$('#qSearch').addEventListener('keydown', function (e) { if (e.key === 'Enter') _applyQueueFilter(); });
+
+  const distBtn = U.$('#distNow');
+  if (distBtn) distBtn.addEventListener('click', async function () {
+    const ok = await U.confirm('แจก Tier 2 ให้พนักงาน active ตอนนี้?\nระบบจะ pick ตาม quota ของแต่ละคน');
+    if (!ok) return;
+    distBtn.disabled = true; distBtn.textContent = 'กำลังแจก...';
+    try {
+      const r = await apiCall('runPrepareMorningQueue');
+      U.toast('แจกแล้ว ' + (r.holdsCreated || 0) + ' เบอร์');
+      renderQueueTab();
+    } catch (e) { U.toast(e.message, true); distBtn.disabled = false; distBtn.textContent = '⚡ แจก Tier 2 ตอนนี้'; }
+  });
+
   _renderLeadsList(lr.leads || []);
 }
 

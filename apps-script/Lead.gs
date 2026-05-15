@@ -14,12 +14,16 @@ function getMyQueue(args) {
   if (!emp) return { ok: false, error: 'no_employee' };
 
   const today = todayBkk();
-  const myLeads = rows('Leads').filter(function (l) {
-    return String(l.assigned_to) === String(emp.employee_id) &&
-           ['pending', 'no_answer', 'postponed'].indexOf(String(l.status)) >= 0;
-  });
   const custMap = {};
   rows('Customers').forEach(function (c) { custMap[c.customer_id] = c; });
+  // filter: ของฉัน + status เปิด + customer ไม่ blacklist
+  const myLeads = rows('Leads').filter(function (l) {
+    if (String(l.assigned_to) !== String(emp.employee_id)) return false;
+    if (['pending', 'no_answer', 'postponed'].indexOf(String(l.status)) < 0) return false;
+    const c = custMap[l.customer_id];
+    if (c && isTruthy(c.blacklist)) return false;
+    return true;
+  });
 
   function mapLead(l) {
     const c = custMap[l.customer_id] || {};

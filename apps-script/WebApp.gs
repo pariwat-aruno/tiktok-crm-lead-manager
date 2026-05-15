@@ -153,6 +153,7 @@ function route_(action, args) {
     // Allocation (Lead actions on no-show)
     case 'restoreSlot':      return restoreSlot(args);
     case 'cancelSlot':       return cancelSlot(args);
+    case 'runPrepareMorningQueue': return runPrepareMorningQueue(args);
 
     // Leave
     case 'requestLeave':     return requestLeave(args);

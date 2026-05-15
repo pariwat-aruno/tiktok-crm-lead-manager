@@ -9,69 +9,116 @@
  */
 
 function prepareMorningQueue() {
-  try {
-    const today = todayBkk();
-    const cfg = getConfig();
-    const quota = Number(cfg.tier2_daily_quota) || 30;
+  return withLock(function () {
+    try {
+      const today = todayBkk();
+      const cfg = getConfig();
+      const quota = Number(cfg.tier2_daily_quota) || 30;
+      const deadlineIso = today + 'T' + (cfg.clock_in_deadline || '09:30') + ':00+07:00';
 
-    const employees = rows('Employees').filter(function (e) { return isActive(e); });
-    let createdHolds = 0;
+      // ── 1) eligible employees + เช็ค quota ที่เหลือ (กัน rerun เกินวันละ 30) ──
+      const allEmployees = rows('Employees').filter(function (e) { return isActive(e); });
+      const activeHolds = rows('LeadHolds').filter(function (h) { return !h.released_at; });
+      const existingByEmp = {};
+      activeHolds.forEach(function (h) {
+        const k = String(h.held_by_employee_id);
+        existingByEmp[k] = (existingByEmp[k] || 0) + 1;
+      });
+      const heldLeadIds = new Set(activeHolds.map(function (h) { return String(h.lead_id); }));
 
-    employees.forEach(function (emp) {
-      try {
-        if (isOnLeaveToday(emp.employee_id)) {
-          _upsertAttendance_(emp.employee_id, today, 'leave');
+      const remainingQuota = {};   // emp_id → quota เหลือ
+      const empById = {};
+      allEmployees.forEach(function (e) {
+        empById[e.employee_id] = e;
+        if (isOnLeaveToday(e.employee_id)) {
+          _upsertAttendance_(e.employee_id, today, 'leave');
           return;
         }
-        _upsertAttendance_(emp.employee_id, today, 'pending');
+        _upsertAttendance_(e.employee_id, today, 'pending');
+        remainingQuota[e.employee_id] = Math.max(0, quota - (existingByEmp[e.employee_id] || 0));
+      });
 
-        const mySkus = rows('ProductAssignments').filter(function (a) {
-          return String(a.employee_id) === String(emp.employee_id) && isTruthy(a.is_active);
-        }).map(function (a) { return String(a.sku); });
-        if (mySkus.length === 0) return;
+      // ── 2) สร้าง map: sku → [emp_id เรียงตาม rr_pointer] ──
+      const skuToEmps = {};
+      rows('ProductAssignments').forEach(function (a) {
+        if (!isTruthy(a.is_active)) return;
+        if (!empById[a.employee_id]) return;
+        if (!(a.employee_id in remainingQuota)) return; // ลา/ban
+        const sku = String(a.sku);
+        if (!skuToEmps[sku]) skuToEmps[sku] = [];
+        skuToEmps[sku].push(String(a.employee_id));
+      });
 
-        const heldLeadIds = new Set(
-          rows('LeadHolds').filter(function (h) { return !h.released_at; })
-            .map(function (h) { return String(h.lead_id); })
-        );
-        const custMap = {};
-        rows('Customers').forEach(function (c) { custMap[c.customer_id] = c; });
+      // ── 3) Fresh pool — group ตาม SKU ──
+      const custMap = {};
+      rows('Customers').forEach(function (c) { custMap[c.customer_id] = c; });
+      const poolBySku = {};
+      rows('Leads').forEach(function (l) {
+        if (l.assigned_to) return;
+        if (heldLeadIds.has(String(l.lead_id))) return;
+        const c = custMap[l.customer_id];
+        if (c && isTruthy(c.blacklist)) return;
+        const sku = String(l.primary_sku || '');
+        if (!skuToEmps[sku] || skuToEmps[sku].length === 0) return;
+        if (!poolBySku[sku]) poolBySku[sku] = [];
+        poolBySku[sku].push(l);
+      });
 
-        const candidates = rows('Leads').filter(function (l) {
-          if (l.assigned_to) return false;
-          if (mySkus.indexOf(String(l.primary_sku)) < 0) return false;
-          if (heldLeadIds.has(String(l.lead_id))) return false;
-          const c = custMap[l.customer_id];
-          if (c && isTruthy(c.blacklist)) return false;
-          return true;
+      // ── 4) RR global per SKU — pick ทีละ 1 เบอร์ วน emp ตาม rr_pointer ──
+      let rrPtr = Number(cfg.rr_pointer) || 0;
+      let createdHolds = 0;
+      const pickedByEmp = {};
+
+      Object.keys(poolBySku).forEach(function (sku) {
+        const peers = skuToEmps[sku].slice(); // copy
+        poolBySku[sku].forEach(function (lead) {
+          // หา emp peer ที่ quota > 0 — วนเริ่มที่ rrPtr
+          let tries = 0;
+          while (tries < peers.length) {
+            const empId = peers[(rrPtr + tries) % peers.length];
+            tries++;
+            if ((remainingQuota[empId] || 0) > 0) {
+              createHold_(lead.lead_id, empId, 'clock_in_pending', deadlineIso);
+              updateRow('Leads', lead._row, {
+                assigned_to: empId, assigned_at: nowBkk(),
+                assignment_reason: 'tier2_morning',
+                tier: 2, held_status: 'held', bucket_date: today,
+                status: 'pending',
+              });
+              remainingQuota[empId]--;
+              pickedByEmp[empId] = (pickedByEmp[empId] || 0) + 1;
+              createdHolds++;
+              rrPtr++;
+              break;
+            }
+          }
         });
+      });
 
-        const picks = candidates.slice(0, quota);
-        const deadlineIso = today + 'T' + (cfg.clock_in_deadline || '09:30') + ':00+07:00';
+      setConfig('rr_pointer', String(rrPtr));
 
-        picks.forEach(function (lead) {
-          createHold_(lead.lead_id, emp.employee_id, 'clock_in_pending', deadlineIso);
-          updateRow('Leads', lead._row, {
-            assigned_to: emp.employee_id, assigned_at: nowBkk(),
-            assignment_reason: 'tier2_morning',
-            tier: 2, held_status: 'held', bucket_date: today,
-            status: 'pending',
-          });
-          createdHolds++;
-        });
+      audit({
+        actor: 'SYSTEM', actorRole: 'system',
+        action: 'lead.tier2_batch_picked',
+        targetType: 'system', targetId: today,
+        before: null, after: { holds: createdHolds, by_emp: pickedByEmp },
+      });
 
-        audit({
-          actor: 'SYSTEM', actorRole: 'system',
-          action: 'lead.tier2_picked',
-          targetType: 'attendance', targetId: emp.employee_id + ':' + today,
-          before: null, after: { picked: picks.length },
-        });
-      } catch (e) { logError('prepareMorningQueue.emp', emp.employee_id + ': ' + e.message); }
-    });
+      logInfo('prepareMorningQueue', 'done', { employees: Object.keys(remainingQuota).length, holds: createdHolds });
+      return { ok: true, employees: Object.keys(remainingQuota).length, holdsCreated: createdHolds, byEmp: pickedByEmp };
+    } catch (e) {
+      logError('prepareMorningQueue', e.message);
+      return { ok: false, error: e.message };
+    }
+  }, 60000);
+}
 
-    logInfo('prepareMorningQueue', 'done', { employees: employees.length, holds: createdHolds });
-    return { ok: true, employees: employees.length, holdsCreated: createdHolds };
-  } catch (e) { logError('prepareMorningQueue', e.message); return { ok: false, error: e.message }; }
+/**
+ * Manual trigger — เรียกจาก UI "แจก Tier 2 ตอนนี้" (owner only)
+ */
+function runPrepareMorningQueue(args) {
+  if (!isOwner(args.lineUserId)) return { ok: false, error: 'forbidden' };
+  return prepareMorningQueue();
 }
 
 function checkClockInDeadline() {

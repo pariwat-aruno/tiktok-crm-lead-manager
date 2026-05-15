@@ -73,34 +73,13 @@ function tickSLA() {
       }
     });
 
-    // 3) SLA warn + reassign over rsH
+    // 3) SLA warn — เก็บแค่ warn ไม่ reassign
+    //    Tier 1+2 model: Tier 1 = ของตัวเอง คงไว้, Tier 2 EOD จัดการเอง
+    //    (เดิมเคย reassign เมื่อ age ≥ reassign_hours — ลบออกเพราะขัด flow ใหม่)
     rows('Leads').forEach(function (l) {
       if (String(l.status) !== 'pending') return;
       const age = diffHours(now, new Date(l.assigned_at));
-      if (age >= rsH) {
-        try {
-          const customer = findOne('Customers', 'customer_id', l.customer_id);
-          if (!customer) return;
-          const owner = resolveOwner({
-            customer: customer,
-            primarySku: l.primary_sku || '',
-            excludeEmployeeIds: [l.assigned_to],
-          });
-          updateRow('Leads', l._row, {
-            assigned_to: owner.employeeId,
-            assigned_at: nowBkk(),
-            assignment_reason: 'reassign_sla',
-          });
-          audit({
-            actor: 'SYSTEM', actorRole: 'system',
-            action: 'lead.reassigned',
-            targetType: 'lead', targetId: l.lead_id,
-            before: { assigned_to: l.assigned_to },
-            after: { assigned_to: owner.employeeId, reason: 'sla' },
-          });
-          reassigned++;
-        } catch (e) { logError('tickSLA.reassign', e.message); }
-      } else if (age >= slaH) {
+      if (age >= slaH) {
         warnByEmp[l.assigned_to] = (warnByEmp[l.assigned_to] || 0) + 1;
       }
     });
